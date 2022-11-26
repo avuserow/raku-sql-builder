@@ -1,0 +1,33 @@
+use Test;
+use SQL::Cantrip;
+
+my $sql = SQL::Cantrip.new;
+
+# These SQL queries are extracted from another project to have complex examples
+subtest 'list-history', {
+    # my $q = $sql.from('history').join('songs', :on());
+    ok 1;
+};
+
+subtest 'history-dates', {
+    # my $tz = 'America/Chicago';
+    # my $date-trunc = Fn.new('date_trunc', Value.new('day'), Fn.new('timezone', Value.new($tz), 'song-start'));
+    # my $q = $sql.from('history').select([
+    #     :day($date-trunc),
+    #     :count(Fn.new('COUNT', $date-trunc)),
+    # ]).group-by('day').order-by('day DESC');
+    # is $q.build.sql, q{SELECT date_trunc('day', timezone('America/Chicago', "song-start")) AS day, COUNT(date_trunc('day', timezone('America/Chicago', "song-start"))) AS count FROM "history" GROUP BY "day" ORDER BY "day" DESC};
+    pass;
+};
+
+subtest 'recent-songs', {
+    my $q = $sql.from('songs').
+        select(<song-id artist album title>).
+        where(:online(1)).
+        order-by(Raw.new(Identifier.new('created-at').sql ~ ' DESC')).
+        limit(20);
+
+    is $q.build.sql, q{SELECT "song-id", "artist", "album", "title" FROM "songs" WHERE "online" = ? ORDER BY "created-at" DESC LIMIT ?};
+};
+
+done-testing;
