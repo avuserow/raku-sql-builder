@@ -31,7 +31,7 @@ class Identifier does SQLSyntax is export {
     has Str() $.cast;
 
     constant relation-pattern = rx/^
-        [$<table>=(<-[.]>+) '.']? # optional table/relation name
+        [$<relation>=(<-[.]>+) '.']? # optional table/relation name
         $<column>=(<-[:]>+) # required column name
         ['::' $<cast>=(.+)]? # optional postgres-style cast
     $/;

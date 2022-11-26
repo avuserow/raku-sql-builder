@@ -9,6 +9,11 @@ subtest 'select clause', {
         is .bind, [];
     }
 
+    with $sql.from('table').select('table.foo').build {
+        is .sql, 'SELECT "table"."foo" FROM "table"';
+        is .bind, [];
+    }
+
     is $sql.from('table').select(:all).build.sql, 'SELECT * FROM "table"';
 };
 

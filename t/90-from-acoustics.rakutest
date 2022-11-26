@@ -36,14 +36,23 @@ subtest 'recent-songs', {
 subtest 'random-songs', {
     my $inner-q = $sql.from('songs').select('song-id').where(:online(1)).order-by(Fn.new('RANDOM')).limit(10);
     my $inner-sql = q{SELECT "song-id" FROM "songs" WHERE "online" = ? ORDER BY RANDOM() LIMIT ?};
-    is $inner-q.build.sql, $inner-sql;
+    with $inner-q.build {
+        is .sql, $inner-sql;
+        is .bind, [1, 10];
+    }
 
+    my $outer-q = $sql.from(:random-songs($inner-q)).select(<songs.song-id artist album title>);
     my $outer-sql = qq{
-        SELECT songs."song-id", ratings.rating / 2.0 AS rating, artist, album, title, length, path, track, disc, year, "artist-id", "album-id", "small-art-id", "art-id"
-        FROM ($inner-sql) AS random_songs
-        JOIN songs ON songs."song-id" = random_songs."song-id"
+        SELECT "songs"."song-id", "artist", "album", "title"
+        FROM ($inner-sql) AS "random-songs"
+        JOIN songs ON songs."song-id" = "random-songs"."song-id"
         LEFT JOIN ratings ON songs."song-id" = ratings."song-id" AND ratings.who = ?
-    }.subst(/\s/, ' ');
+    }.subst(:g, /\s+/, ' ');
+
+    with $outer-q.build {
+        is .sql, $outer-sql;
+        is .bind, [1, 10];
+    }
 };
 
 done-testing;
