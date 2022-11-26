@@ -4,23 +4,53 @@ use SQL::Cantrip;
 my $sql = SQL::Cantrip.new;
 
 subtest 'select clause', {
-    is $sql.from('table').select('foo').build.sql, 'SELECT "foo" FROM "table"';
+    with $sql.from('table').select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table"';
+        is .bind, [];
+    }
 
     is $sql.from('table').select(:all).build.sql, 'SELECT * FROM "table"';
 };
 
 subtest 'where clause', {
-    is $sql.from('table').where(:bar<bar>).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
-    is $sql.from('table').where(<bar = bar>).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
-    is $sql.from('table').where([:bar<bar>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
-    is $sql.from('table').where(:and, [:bar<bar>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
-    is $sql.from('table').where(:or, [:bar<bar>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+    with $sql.from('table').where(:bar<bar>).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    with $sql.from('table').where(<bar = bar>).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    with $sql.from('table').where([:bar<bar>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    with $sql.from('table').where(:and, [:bar<bar>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    with $sql.from('table').where(:or, [:bar<bar>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
 
-    is $sql.from('table').where(:and, [:bar<bar>, :baz<baz>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? AND "baz" = ?';
-    is $sql.from('table').where(:or, [:bar<bar>, :baz<baz>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? OR "baz" = ?';
+    with $sql.from('table').where(:and, [:bar<bar>, :baz<baz>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? AND "baz" = ?';
+        is .bind, <bar baz>;
+    }
+    with $sql.from('table').where(:or, [:bar<bar>, :baz<baz>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? OR "baz" = ?';
+        is .bind, <bar baz>;
+    }
 
-    is $sql.from('table').where(:and, [<foo = 1>, <bar = 2>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? AND "bar" = ?';
-    is $sql.from('table').where(:or, [<foo = 1>, <bar = 2>]).select('foo').build.sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? OR "bar" = ?';
+    with $sql.from('table').where(:and, [<foo = 1>, <bar = 2>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? AND "bar" = ?';
+        is .bind, [<1 2>];
+    }
+    with $sql.from('table').where(:or, [<foo = 1>, <bar = 2>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? OR "bar" = ?';
+        is .bind, [<1 2>];
+    }
 }
 
 subtest 'subselect', {

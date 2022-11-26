@@ -1,9 +1,5 @@
 unit class SQL::Cantrip;
 
-my sub column(Str $s) {
-    return $s;
-}
-
 my sub quote-value(Str $s) {
     my $q = $s.subst("'", "''");
     return "'$s'";
@@ -14,14 +10,18 @@ my sub quote-column(Str $s) {
     return '"' ~ $s ~ '"';
 }
 
-my role SQLSyntax {
-    method sql {...}
-    method values {...}
+# XXX: rename to SQLFragment?
+class SQLStatement {
+    has $.sql;
+    has @.bind;
 }
 
-class SQLStatement does SQLSyntax {
-    has $.sql;
-    has @.values;
+my role SQLSyntax {
+    method build(--> SQLStatement) {...}
+}
+
+my sub fragment(SQLSyntax:U $default-class, $value) {
+    $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
 }
 
 # SQLSyntax representing a column or table name, quoted with the column rules (also works on tables)
@@ -41,61 +41,73 @@ class Identifier does SQLSyntax is export {
         self.bless(:$<relation>, :$<column>, :$<cast>);
     }
 
-    method sql {
+    method build {
         my $s = "";
         $s ~= "{quote-column($_)}." with $!relation;
         $s ~= quote-column($!column);
         $s ~= "::$_" with $!cast;
-        return $s;
+        SQLStatement.new(:sql($s));
     }
 }
 
 # SQLSyntax representing a literal value. Numbers and booleans are formatted as expected. Strings are escaped by string rules (double quotes).
 class Value does SQLSyntax is export {
-    method sql {...}
+    method build {...}
 }
 
 # SQLSyntax representing a single placeholder. Always emits a '?' token
 class Placeholder does SQLSyntax is export {
-    has $.value;
+    has $.bind;
 
-    method new($value) {
-        self.bless(:$value);
+    method new($bind) {
+        self.bless(:$bind);
     }
 
-    method sql {
-        return '?';
+    method build {
+        SQLStatement.new(:sql('?'), :$.bind);
     }
 }
 
+
+my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @items, Str :$join = '') {
+    for @items.kv -> $i, $value {
+        my $item = $value.does(SQLSyntax) ?? $value.build !! $default-class.new($value).build;
+        $sql ~= $join unless $i == 0;
+        $sql ~= $item.sql;
+        append @bind, $item.bind;
+    }
+}
 # SQLSyntax representing a raw value, unescaped in any way
 class Raw does SQLSyntax is export {
     has $.value;
+    has @.bind;
 
-    method new($value) {
-        self.bless(:$value);
+    method new($value, :@bind) {
+        self.bless(:$value, :@bind);
     }
 
-    method sql {
-        return $!value;
+    method build {
+        SQLStatement.new(:sql($!value), :@!bind);
     }
 }
 
 # SQLSyntax representing a function call. First argument is unescaped, all subsequent arguments are treated as columns (if not otherwise specified)
 class Fn does SQLSyntax is export {
-    method sql {!!!}
-}
+    has $.fn;
+    has @.params;
 
-my sub fragment(SQLSyntax:U $default-class, $value) {
-    $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
-}
+    method new(Str $fn, *@params) {
+        self.bless(:$fn, :@params);
+    }
 
-my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @items, Str :$join = '') {
-    for @items.kv -> $i, $value {
-        my $item = $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
-        $sql ~= $join unless $i == 0;
-        $sql ~= $item.sql;
-        append @bind, .value when $item ~~ Placeholder;
+    method build {
+        # XXX: should we render this at construction time? or later?
+        my @bind;
+        my $sql = $.fn ~ '(';
+        append-fragments($sql, @bind, Identifier, @.params, :join(', '));
+        $sql ~= ')';
+
+        SQLStatement.new(:$sql, :@bind);
     }
 }
 
@@ -112,30 +124,34 @@ class ConditionClause {
         }
     }
 
-    method sql {
+    method build {
         my @parts;
         my @bind;
 
         for @!clauses -> $clause {
             given $clause {
                 when Pair {
-                    my $key = fragment(Identifier, $clause.key);
-                    my $value = fragment(Placeholder, $clause.value);
+                    my $key = fragment(Identifier, $clause.key).build;
+                    my $value = fragment(Placeholder, $clause.value).build;
 
                     push @parts, "{$key.sql} = {$value.sql}";
-                    append @bind, ($key, $value).map({.value when Placeholder});
+                    append @bind, $key.bind;
+                    append @bind, $value.bind;
                 }
                 when Positional {
                     die "wrong number of args!!" unless $clause.elems == 3;
 
-                    my $col = fragment(Identifier, $clause[0]);
-                    my $op = fragment(Raw, $clause[1]);
-                    my $value = fragment(Placeholder, $clause[2]);
+                    my $col = fragment(Identifier, $clause[0]).build;
+                    my $op = fragment(Raw, $clause[1]).build;
+                    my $value = fragment(Placeholder, $clause[2]).build;
 
                     push @parts, "{$col.sql} {$op.sql} {$value.sql}";
-                    append @bind, ($col, $op, $value).map({.value when Placeholder});
+                    append @bind, $col.bind;
+                    append @bind, $op.bind;
+                    append @bind, $value.bind;
                 }
                 when SQLSyntax {
+                    die "SQLSyntax NYI!!";
                 }
                 default {
                     die "Don't know how to handle parameter of type {$clause.^name}: {$clause.raku}";
@@ -143,7 +159,7 @@ class ConditionClause {
             }
         }
 
-        return @parts.join(" {$.mode.uc} "), @bind;
+        return SQLStatement.new(:sql(@parts.join(" {$.mode.uc} ")), :@bind);
     }
 }
 
@@ -201,13 +217,17 @@ class SelectBuilder {
         my @bind;
         my $sql = 'SELECT ';
         append-fragments($sql, @bind, Identifier, @!select-columns, :join(', '));
-        $sql ~= " FROM {$!from.sql}";
-        append @bind, .value when $!from ~~ Placeholder;
+
+        with $!from.?build {
+            $sql ~= ' FROM ' ~ .sql;
+            append @bind, .bind;
+        }
 
         if $!where {
-            my ($parts, @where-bind) = $!where.sql;
-            $sql ~= ' WHERE ' ~ $parts;
-            append @bind, @where-bind;
+            with $!where.?build {
+                $sql ~= ' WHERE ' ~ .sql;
+                append @bind, .bind;
+            }
         }
 
         if @!order-columns {
@@ -216,12 +236,13 @@ class SelectBuilder {
         }
 
         if $!limit-count {
-            my ($parts, @limit-bind) = $!limit-count.sql;
-            $sql ~= ' LIMIT ' ~ $parts;
-            append @bind, @limit-bind;
+            with $!limit-count.?build {
+                $sql ~= ' LIMIT ' ~ .sql;
+                append @bind, .bind;
+            }
         }
 
-        return SQLStatement.new(:$sql, :values(@bind));
+        return SQLStatement.new(:$sql, :@bind);
     }
 }
 
@@ -232,12 +253,12 @@ multi method from(*%pairs where *.elems == 1) {
     my $select = $pair.value.build;
 
     # XXX: teach SelectBuilder about this syntax instead
-    my $from = SQLStatement.new(:sql("({$select.sql}) AS {quote-column($alias)}"), :values($select.values));
+    my $from = Raw.new("({$select.sql}) AS {quote-column($alias)}", :bind($select.bind));
     return SelectBuilder.new(:$from);
 }
 
 multi method from(Str $table) {
-    return SelectBuilder.new(:from(fragment(Identifier, $table)));
+    return SelectBuilder.new(:from(Identifier.new($table)));
 }
 
 

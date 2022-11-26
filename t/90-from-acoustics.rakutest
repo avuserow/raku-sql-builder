@@ -24,10 +24,26 @@ subtest 'recent-songs', {
     my $q = $sql.from('songs').
         select(<song-id artist album title>).
         where(:online(1)).
-        order-by(Raw.new(Identifier.new('created-at').sql ~ ' DESC')).
+        order-by(Raw.new(Identifier.new('created-at').build.sql ~ ' DESC')).
         limit(20);
 
-    is $q.build.sql, q{SELECT "song-id", "artist", "album", "title" FROM "songs" WHERE "online" = ? ORDER BY "created-at" DESC LIMIT ?};
+    with $q.build {
+        is .sql, q{SELECT "song-id", "artist", "album", "title" FROM "songs" WHERE "online" = ? ORDER BY "created-at" DESC LIMIT ?};
+        is .bind, [1, 20];
+    }
+};
+
+subtest 'random-songs', {
+    my $inner-q = $sql.from('songs').select('song-id').where(:online(1)).order-by(Fn.new('RANDOM')).limit(10);
+    my $inner-sql = q{SELECT "song-id" FROM "songs" WHERE "online" = ? ORDER BY RANDOM() LIMIT ?};
+    is $inner-q.build.sql, $inner-sql;
+
+    my $outer-sql = qq{
+        SELECT songs."song-id", ratings.rating / 2.0 AS rating, artist, album, title, length, path, track, disc, year, "artist-id", "album-id", "small-art-id", "art-id"
+        FROM ($inner-sql) AS random_songs
+        JOIN songs ON songs."song-id" = random_songs."song-id"
+        LEFT JOIN ratings ON songs."song-id" = ratings."song-id" AND ratings.who = ?
+    }.subst(/\s/, ' ');
 };
 
 done-testing;
