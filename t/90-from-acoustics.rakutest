@@ -10,14 +10,16 @@ subtest 'list-history', {
 };
 
 subtest 'history-dates', {
-    # my $tz = 'America/Chicago';
-    # my $date-trunc = Fn.new('date_trunc', Value.new('day'), Fn.new('timezone', Value.new($tz), 'song-start'));
-    # my $q = $sql.from('history').select([
-    #     :day($date-trunc),
-    #     :count(Fn.new('COUNT', $date-trunc)),
-    # ]).group-by('day').order-by('day DESC');
-    # is $q.build.sql, q{SELECT date_trunc('day', timezone('America/Chicago', "song-start")) AS day, COUNT(date_trunc('day', timezone('America/Chicago', "song-start"))) AS count FROM "history" GROUP BY "day" ORDER BY "day" DESC};
-    pass;
+    my $tz = 'America/Chicago';
+    my $date-trunc = Fn.new('date_trunc', Value.new('day'), Fn.new('timezone', Value.new($tz), 'song-start'));
+    my $q = $sql.from('history').
+        select([
+            :day($date-trunc),
+            :count(Fn.new('COUNT', $date-trunc)),
+        ]).
+        group-by('day').
+        order-by(Raw.new('"day" DESC'));
+    is $q.build.sql, q{SELECT date_trunc('day', timezone('America/Chicago', "song-start")) AS "day", COUNT(date_trunc('day', timezone('America/Chicago', "song-start"))) AS "count" FROM "history" GROUP BY "day" ORDER BY "day" DESC};
 };
 
 subtest 'recent-songs', {

@@ -52,7 +52,15 @@ class Identifier does SQLSyntax is export {
 
 # SQLSyntax representing a literal value. Numbers and booleans are formatted as expected. Strings are escaped by string rules (double quotes).
 class Value does SQLSyntax is export {
-    method build {...}
+    has $.value;
+
+    method new($value) {
+        self.bless(:$value);
+    }
+
+    method build {
+        SQLStatement.new(:sql(quote-value($!value)));
+    }
 }
 
 # SQLSyntax representing a single placeholder. Always emits a '?' token
@@ -106,6 +114,25 @@ class Fn does SQLSyntax is export {
         my $sql = $.fn ~ '(';
         append-fragments($sql, @bind, Identifier, @.params, :join(', '));
         $sql ~= ')';
+
+        SQLStatement.new(:$sql, :@bind);
+    }
+}
+
+# SQLSyntax representing an Infix operator. TBD if this is the right way to represent this, so keep it private
+my class OpInfix does SQLSyntax {
+    has $.op;
+    has $.left;
+    has $.right;
+
+    method new(Str $op, $left, $right) {
+        self.bless(:$op, :$left, :$right);
+    }
+
+    method build {
+        my @bind;
+        my $sql = '';
+        append-fragments($sql, @bind, Identifier, [$!left, $!right], :join(" $!op "));
 
         SQLStatement.new(:$sql, :@bind);
     }
@@ -208,6 +235,7 @@ class SelectBuilder {
     has Join @.join-items;
     has ConditionClause $.where;
     has @.order-columns;
+    has @.group-by-columns;
     has SQLSyntax $.limit-count;
 
     # Single pair
@@ -251,6 +279,11 @@ class SelectBuilder {
         self;
     }
 
+    method group-by(*@columns) {
+        @!group-by-columns = @columns;
+        self;
+    }
+
     # Don't use multi method here to avoid inheriting Cool.join
     method join($table, :@on, :@using, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
         my @modes = (:$inner, :$left, :$right, :$full).grep({.value});
@@ -273,7 +306,10 @@ class SelectBuilder {
 
         my @bind;
         my $sql = 'SELECT ';
-        append-fragments($sql, @bind, Identifier, @!select-columns, :join(', '));
+
+        # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
+        my @cols = @!select-columns.map({$_ ~~ Pair ?? OpInfix.new('AS', .value, .key) !! $_});
+        append-fragments($sql, @bind, Identifier, @cols, :join(', '));
 
         with $!from.?build {
             $sql ~= ' FROM ' ~ .sql;
@@ -290,6 +326,11 @@ class SelectBuilder {
                 $sql ~= ' WHERE ' ~ .sql;
                 append @bind, .bind;
             }
+        }
+
+        if @!group-by-columns {
+            $sql ~= ' GROUP BY ';
+            append-fragments($sql, @bind, Identifier, @!group-by-columns, :join(', '));
         }
 
         if @!order-columns {
