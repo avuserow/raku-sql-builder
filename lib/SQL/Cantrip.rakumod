@@ -163,9 +163,39 @@ class ConditionClause {
     }
 }
 
+my class Join does SQLSyntax {
+    has $.table;
+    has ConditionClause $.on;
+
+    submethod BUILD(:$table, :@on) {
+        $!table = $table;
+        $!on = ConditionClause.new(:clauses(@on));
+    }
+
+    method build {
+        my @bind;
+        my $sql = 'JOIN ';
+
+        with fragment(Identifier, $!table).build {
+            $sql ~= .sql;
+            append @bind, .bind;
+        }
+
+        if $!on {
+            with $!on.build {
+                $sql ~= ' ON ' ~ .sql;
+                append @bind, .bind;
+            }
+        }
+
+        return SQLStatement.new(:$sql, :@bind);
+    }
+}
+
 class SelectBuilder {
     has @.select-columns;
     has SQLSyntax $.from;
+    has Join @.join-items;
     has ConditionClause $.where;
     has @.order-columns;
     has SQLSyntax $.limit-count;
@@ -211,6 +241,11 @@ class SelectBuilder {
         self;
     }
 
+    multi method join($table, :@on!) {
+        push @!join-items, Join.new(:$table, :@on);
+        self;
+    }
+
     method build {
         die "no columns to select" unless @!select-columns;
 
@@ -221,6 +256,11 @@ class SelectBuilder {
         with $!from.?build {
             $sql ~= ' FROM ' ~ .sql;
             append @bind, .bind;
+        }
+
+        if @!join-items {
+            $sql ~= ' ';
+            append-fragments($sql, @bind, Identifier, @!join-items, :join(' '));
         }
 
         if $!where {
