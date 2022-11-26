@@ -164,17 +164,27 @@ class ConditionClause {
 }
 
 my class Join does SQLSyntax {
+    has $.mode;
     has $.table;
+    has $.join-type;
     has ConditionClause $.on;
 
-    submethod BUILD(:$table, :@on) {
+    submethod BUILD(:$mode, :$table, :@on) {
         $!table = $table;
-        $!on = ConditionClause.new(:clauses(@on));
+        $!mode = $mode;
+
+        # XXX: would be better to reuse the where clause logic somehow
+        # most likely to push that logic into ConditionClause
+        if @on[0] ~~ Pair && @on[0].key eq 'and'|'or' && @on[0].value ~~ Bool  {
+            $!on = ConditionClause.new(:mode(@on[0].key), :clauses(@on[1..*]));
+        } else {
+            $!on = ConditionClause.new(:clauses(@on));
+        }
     }
 
     method build {
         my @bind;
-        my $sql = 'JOIN ';
+        my $sql = $!mode ?? $!mode ~ ' JOIN ' !! 'JOIN ';
 
         with fragment(Identifier, $!table).build {
             $sql ~= .sql;
@@ -241,8 +251,20 @@ class SelectBuilder {
         self;
     }
 
-    multi method join($table, :@on!) {
-        push @!join-items, Join.new(:$table, :@on);
+    # Don't use multi method here to avoid inheriting Cool.join
+    method join($table, :@on, :@using, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
+        my @modes = (:$inner, :$left, :$right, :$full).grep({.value});
+        if @modes > 1 {
+            die "Multiple join types passed: must use only one of :inner :left :right :full (you used @modes[])";
+        }
+
+        unless one(@on, @using) {
+            die "Must specify exactly one of :on or :using for join criteria";
+        }
+
+        my $mode = @modes[0].key.uc if @modes;
+
+        push @!join-items, Join.new(:$mode, :$table, :@on);
         self;
     }
 

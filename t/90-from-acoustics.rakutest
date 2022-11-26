@@ -43,22 +43,19 @@ subtest 'random-songs', {
 
     my $outer-q = $sql.from(:random-songs($inner-q)).
         join('songs', :on('songs.song-id', '=', Identifier.new('random-songs.song-id'))).
+        join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).
         select(<songs.song-id artist album title>);
+
     my $outer-sql = qq{
         SELECT "songs"."song-id", "artist", "album", "title"
         FROM ($inner-sql) AS "random-songs"
         JOIN "songs" ON "songs"."song-id" = "random-songs"."song-id"
+        LEFT JOIN "ratings" ON "songs"."song-id" = "ratings"."song-id" AND "ratings"."who" = ?
     }.subst(:g, /\s+/, ' ').trim;
-        # my $outer-sql = qq{
-        #     SELECT "songs"."song-id", "artist", "album", "title"
-        #     FROM ($inner-sql) AS "random-songs"
-        #     JOIN songs ON "songs"."song-id" = "random-songs"."song-id"
-        #     LEFT JOIN ratings ON "songs"."song-id" = ratings."song-id" AND ratings.who = ?
-        # }.subst(:g, /\s+/, ' ').trim;
 
     with $outer-q.build {
         is .sql, $outer-sql;
-        is .bind, [1, 10];
+        is .bind, [1, 10, 'myuser'];
     }
 };
 

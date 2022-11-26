@@ -68,6 +68,16 @@ subtest 'join', {
         is .sql, 'SELECT "t1"."foo" FROM "t1" JOIN "t2" ON "t1"."foo" = "t2"."foo"';
         is .bind, [];
     }
+
+    with $sql.from('t1').join(:left, 't2', :on('t1.foo', '=', Identifier.new('t2.foo'))).select('t1.foo').build {
+        is .sql, 'SELECT "t1"."foo" FROM "t1" LEFT JOIN "t2" ON "t1"."foo" = "t2"."foo"';
+        is .bind, [];
+    }
+
+    with $sql.from('t1').join('t2', :on(:and, ['t1.foo', '=', Identifier.new('t2.foo')], ['t1.bar', '=', 'hello world'])).select('t1.foo').build {
+        is .sql, 'SELECT "t1"."foo" FROM "t1" JOIN "t2" ON "t1"."foo" = "t2"."foo" AND "t1"."bar" = ?';
+        is .bind, ['hello world'];
+    }
 };
 
 done-testing;
