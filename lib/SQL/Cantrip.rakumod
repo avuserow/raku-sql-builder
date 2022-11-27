@@ -10,7 +10,6 @@ my sub quote-column(Str $s) {
     return '"' ~ $s ~ '"';
 }
 
-# XXX: rename to SQLFragment?
 class SQLFragment {
     has $.sql;
     has @.bind;
@@ -23,10 +22,6 @@ my role SQLSyntax {
 my sub fragment(SQLSyntax:U $default-class, $value) {
     $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
 }
-
-# SQLSyntax that holds more SQLSyntax, but wrapped in parentheses
-# class SubGroup does SQLSyntax {
-# }
 
 # SQLSyntax representing a column or table name, quoted with the column rules (also works on tables)
 class Identifier does SQLSyntax is export {
@@ -101,6 +96,31 @@ class Raw does SQLSyntax is export {
     method build-fragment {
         SQLFragment.new(:sql($!value), :@!bind);
     }
+
+    method fmt($fmt, *@parts) {
+        if any(@parts) !~~ SQLSyntax {
+            die "Raw.fmt must receive only SQLSyntax as parameters";
+        }
+
+        my $pattern-count = $fmt.comb('{}').elems;
+        if $pattern-count != @parts.elems {
+            die "Raw.fmt: got $pattern-count replacement elements (\{\}), expected {@parts.elems}";
+        }
+
+        if $fmt ~~ /('{' <[^}]>+ '}')/ {
+            die "Raw.fmt: found unsupported replacement element '{$/.Str}' (this syntax is reserved)";
+        }
+
+        my @bind;
+        my $i = 0;
+        my $value = $fmt.subst(:g, '{}', sub {
+            my $sql = @parts[$i++].build-fragment;
+            append @bind, $sql.bind;
+            $sql.sql;
+        });
+
+        self.bless(:$value, :@bind);
+    }
 }
 
 # SQLSyntax representing a function call. First argument is unescaped, all subsequent arguments are treated as columns (if not otherwise specified)
@@ -118,25 +138,6 @@ class Fn does SQLSyntax is export {
         my $sql = $.fn ~ '(';
         append-fragments($sql, @bind, Identifier, @.params, :join(', '));
         $sql ~= ')';
-
-        SQLFragment.new(:$sql, :@bind);
-    }
-}
-
-# SQLSyntax representing an Infix operator
-class OpInfix does SQLSyntax is export {
-    has $.op;
-    has $.left;
-    has $.right;
-
-    method new($op, $left, $right) {
-        self.bless(:$op, :$left, :$right);
-    }
-
-    method build-fragment {
-        my @bind;
-        my $sql = '';
-        append-fragments($sql, @bind, Identifier, [$!left, $!right], :join(" $!op "));
 
         SQLFragment.new(:$sql, :@bind);
     }
@@ -314,7 +315,14 @@ class SelectBuilder does SQLSyntax {
         my $sql = 'SELECT ';
 
         # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
-        my @cols = @!select-columns.map({$_ ~~ Pair ?? OpInfix.new('AS', .value, .key) !! $_});
+        my @cols = @!select-columns.map({
+            when Pair {
+                Raw.fmt('{} AS {}', fragment(Identifier, .value), fragment(Identifier, .key));
+            }
+            default {
+                $_;
+            }
+        });
         append-fragments($sql, @bind, Identifier, @cols, :join(', '));
 
         with $!from.?build-fragment {

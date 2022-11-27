@@ -26,7 +26,7 @@ subtest 'recent-songs', {
     my $q = $sql.from('songs').
         select(<song-id artist album title>).
         where(:online(1)).
-        order-by(Raw.new(Identifier.new('created-at').build-fragment.sql ~ ' DESC')).
+        order-by(Raw.fmt('{} DESC', Identifier.new('created-at'))).
         limit(20);
 
     with $q.build {
@@ -62,13 +62,23 @@ subtest 'random-songs', {
 };
 
 subtest 'load-songs', {
-    my $join-expr = OpInfix.new('WITH ORDINALITY', Fn.new('unnest', Placeholder.new(Array.new('1234'))), Raw.new('t(id, ord)'));
+    my $join-expr = Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new(Array.new('1234')));
     my $q = $sql.from('songs').
         join($join-expr, :on('t.id', '=', Identifier.new('songs.song-id'))).
         join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).
         select(<song-id artist album>).
         order-by('t.ord');
 
+
+    with $q.build {
+        is .sql, q{
+            SELECT "song-id", "artist", "album" FROM "songs"
+            JOIN unnest(?::uuid[]) WITH ORDINALITY t(id, ord) ON "t"."id" = "songs"."song-id"
+            LEFT JOIN "ratings" ON "songs"."song-id" = "ratings"."song-id" AND "ratings"."who" = ?
+            ORDER BY "t"."ord"
+        }.subst(:g, /\s+/, ' ').trim;
+        is .bind, [1234, 'myuser'];
+    }
 };
 
 done-testing;
