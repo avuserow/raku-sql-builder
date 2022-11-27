@@ -61,6 +61,11 @@ subtest 'where clause', {
 subtest 'subselect', {
     my $inner = $sql.from('table').select('id');
     is $sql.from(:$inner).select(:all).build.sql, 'SELECT * FROM (SELECT "id" FROM "table") AS "inner"';
+
+    with $sql.from('table').select(:all).where(['id', 'IN', $inner]).build  {
+        is .sql, 'SELECT * FROM "table" WHERE "id" IN (SELECT "id" FROM "table")';
+        is .bind, [];
+    }
 };
 
 subtest 'join', {

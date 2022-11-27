@@ -61,4 +61,14 @@ subtest 'random-songs', {
     }
 };
 
+subtest 'load-songs', {
+    my $join-expr = OpInfix(Fn.new('unnest', Placeholder.new(Array.new('1234'))), 'WITH ORDINALITY', Raw.new('t(id, ord)'));
+    my $q = $sql.from('songs').
+        join($join-expr, :on('t.id', '=', Identifier.new('songs.song-id'))).
+        join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).
+        select(<song-id artist album>).
+        order-by('t.ord');
+
+};
+
 done-testing;

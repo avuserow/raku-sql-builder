@@ -11,18 +11,22 @@ my sub quote-column(Str $s) {
 }
 
 # XXX: rename to SQLFragment?
-class SQLStatement {
+class SQLFragment {
     has $.sql;
     has @.bind;
 }
 
 my role SQLSyntax {
-    method build(--> SQLStatement) {...}
+    method build-fragment(--> SQLFragment) {...}
 }
 
 my sub fragment(SQLSyntax:U $default-class, $value) {
     $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
 }
+
+# SQLSyntax that holds more SQLSyntax, but wrapped in parentheses
+# class SubGroup does SQLSyntax {
+# }
 
 # SQLSyntax representing a column or table name, quoted with the column rules (also works on tables)
 class Identifier does SQLSyntax is export {
@@ -33,7 +37,7 @@ class Identifier does SQLSyntax is export {
     constant relation-pattern = rx/^
         [$<relation>=(<-[.]>+) '.']? # optional table/relation name
         $<column>=(<-[:]>+) # required column name
-        ['::' $<cast>=(.+)]? # optional postgres-style cast
+        ['::' $<cast>=(\S+)]? # optional postgres-style cast
     $/;
 
     method new(Str $string) {
@@ -41,12 +45,12 @@ class Identifier does SQLSyntax is export {
         self.bless(:$<relation>, :$<column>, :$<cast>);
     }
 
-    method build {
+    method build-fragment {
         my $s = "";
         $s ~= "{quote-column($_)}." with $!relation;
         $s ~= quote-column($!column);
         $s ~= "::$_" with $!cast;
-        SQLStatement.new(:sql($s));
+        SQLFragment.new(:sql($s));
     }
 }
 
@@ -58,8 +62,8 @@ class Value does SQLSyntax is export {
         self.bless(:$value);
     }
 
-    method build {
-        SQLStatement.new(:sql(quote-value($!value)));
+    method build-fragment {
+        SQLFragment.new(:sql(quote-value($!value)));
     }
 }
 
@@ -71,15 +75,15 @@ class Placeholder does SQLSyntax is export {
         self.bless(:$bind);
     }
 
-    method build {
-        SQLStatement.new(:sql('?'), :$.bind);
+    method build-fragment {
+        SQLFragment.new(:sql('?'), :$.bind);
     }
 }
 
 
 my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @items, Str :$join = '') {
     for @items.kv -> $i, $value {
-        my $item = $value.does(SQLSyntax) ?? $value.build !! $default-class.new($value).build;
+        my $item = $value.does(SQLSyntax) ?? $value.build-fragment !! $default-class.new($value).build-fragment;
         $sql ~= $join unless $i == 0;
         $sql ~= $item.sql;
         append @bind, $item.bind;
@@ -94,8 +98,8 @@ class Raw does SQLSyntax is export {
         self.bless(:$value, :@bind);
     }
 
-    method build {
-        SQLStatement.new(:sql($!value), :@!bind);
+    method build-fragment {
+        SQLFragment.new(:sql($!value), :@!bind);
     }
 }
 
@@ -108,14 +112,14 @@ class Fn does SQLSyntax is export {
         self.bless(:$fn, :@params);
     }
 
-    method build {
+    method build-fragment {
         # XXX: should we render this at construction time? or later?
         my @bind;
         my $sql = $.fn ~ '(';
         append-fragments($sql, @bind, Identifier, @.params, :join(', '));
         $sql ~= ')';
 
-        SQLStatement.new(:$sql, :@bind);
+        SQLFragment.new(:$sql, :@bind);
     }
 }
 
@@ -129,16 +133,16 @@ my class OpInfix does SQLSyntax {
         self.bless(:$op, :$left, :$right);
     }
 
-    method build {
+    method build-fragment {
         my @bind;
         my $sql = '';
         append-fragments($sql, @bind, Identifier, [$!left, $!right], :join(" $!op "));
 
-        SQLStatement.new(:$sql, :@bind);
+        SQLFragment.new(:$sql, :@bind);
     }
 }
 
-class ConditionClause {
+class ConditionClause does SQLSyntax {
     has Str $.mode = 'none';
     has @.clauses;
 
@@ -151,15 +155,15 @@ class ConditionClause {
         }
     }
 
-    method build {
+    method build-fragment {
         my @parts;
         my @bind;
 
         for @!clauses -> $clause {
             given $clause {
                 when Pair {
-                    my $key = fragment(Identifier, $clause.key).build;
-                    my $value = fragment(Placeholder, $clause.value).build;
+                    my $key = fragment(Identifier, $clause.key).build-fragment;
+                    my $value = fragment(Placeholder, $clause.value).build-fragment;
 
                     push @parts, "{$key.sql} = {$value.sql}";
                     append @bind, $key.bind;
@@ -168,17 +172,14 @@ class ConditionClause {
                 when Positional {
                     die "wrong number of args!!" unless $clause.elems == 3;
 
-                    my $col = fragment(Identifier, $clause[0]).build;
-                    my $op = fragment(Raw, $clause[1]).build;
-                    my $value = fragment(Placeholder, $clause[2]).build;
+                    my $col = fragment(Identifier, $clause[0]).build-fragment;
+                    my $op = fragment(Raw, $clause[1]).build-fragment;
+                    my $value = fragment(Placeholder, $clause[2]).build-fragment;
 
                     push @parts, "{$col.sql} {$op.sql} {$value.sql}";
                     append @bind, $col.bind;
                     append @bind, $op.bind;
                     append @bind, $value.bind;
-                }
-                when SQLSyntax {
-                    die "SQLSyntax NYI!!";
                 }
                 default {
                     die "Don't know how to handle parameter of type {$clause.^name}: {$clause.raku}";
@@ -186,7 +187,7 @@ class ConditionClause {
             }
         }
 
-        return SQLStatement.new(:sql(@parts.join(" {$.mode.uc} ")), :@bind);
+        return SQLFragment.new(:sql(@parts.join(" {$.mode.uc} ")), :@bind);
     }
 }
 
@@ -209,27 +210,27 @@ my class Join does SQLSyntax {
         }
     }
 
-    method build {
+    method build-fragment {
         my @bind;
         my $sql = $!mode ?? $!mode ~ ' JOIN ' !! 'JOIN ';
 
-        with fragment(Identifier, $!table).build {
+        with fragment(Identifier, $!table).build-fragment {
             $sql ~= .sql;
             append @bind, .bind;
         }
 
         if $!on {
-            with $!on.build {
+            with $!on.build-fragment {
                 $sql ~= ' ON ' ~ .sql;
                 append @bind, .bind;
             }
         }
 
-        return SQLStatement.new(:$sql, :@bind);
+        return SQLFragment.new(:$sql, :@bind);
     }
 }
 
-class SelectBuilder {
+class SelectBuilder does SQLSyntax {
     has @.select-columns;
     has SQLSyntax $.from;
     has Join @.join-items;
@@ -301,6 +302,11 @@ class SelectBuilder {
         self;
     }
 
+    method build-fragment {
+        my $fragment = self.build;
+        SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
+    }
+
     method build {
         die "no columns to select" unless @!select-columns;
 
@@ -311,7 +317,7 @@ class SelectBuilder {
         my @cols = @!select-columns.map({$_ ~~ Pair ?? OpInfix.new('AS', .value, .key) !! $_});
         append-fragments($sql, @bind, Identifier, @cols, :join(', '));
 
-        with $!from.?build {
+        with $!from.?build-fragment {
             $sql ~= ' FROM ' ~ .sql;
             append @bind, .bind;
         }
@@ -322,7 +328,7 @@ class SelectBuilder {
         }
 
         if $!where {
-            with $!where.?build {
+            with $!where.?build-fragment {
                 $sql ~= ' WHERE ' ~ .sql;
                 append @bind, .bind;
             }
@@ -339,13 +345,13 @@ class SelectBuilder {
         }
 
         if $!limit-count {
-            with $!limit-count.?build {
+            with $!limit-count.?build-fragment {
                 $sql ~= ' LIMIT ' ~ .sql;
                 append @bind, .bind;
             }
         }
 
-        return SQLStatement.new(:$sql, :@bind);
+        return SQLFragment.new(:$sql, :@bind);
     }
 }
 
