@@ -26,7 +26,7 @@ subtest 'recent-songs', {
     my $q = $sql.from('songs').
         select(<song-id artist album title>).
         where(:online(1)).
-        order-by(Raw.new(Identifier.new('created-at').build.sql ~ ' DESC')).
+        order-by(Raw.new(Identifier.new('created-at').build-fragment.sql ~ ' DESC')).
         limit(20);
 
     with $q.build {
@@ -62,7 +62,7 @@ subtest 'random-songs', {
 };
 
 subtest 'load-songs', {
-    my $join-expr = OpInfix(Fn.new('unnest', Placeholder.new(Array.new('1234'))), 'WITH ORDINALITY', Raw.new('t(id, ord)'));
+    my $join-expr = OpInfix.new('WITH ORDINALITY', Fn.new('unnest', Placeholder.new(Array.new('1234'))), Raw.new('t(id, ord)'));
     my $q = $sql.from('songs').
         join($join-expr, :on('t.id', '=', Identifier.new('songs.song-id'))).
         join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).

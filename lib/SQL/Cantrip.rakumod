@@ -123,13 +123,13 @@ class Fn does SQLSyntax is export {
     }
 }
 
-# SQLSyntax representing an Infix operator. TBD if this is the right way to represent this, so keep it private
-my class OpInfix does SQLSyntax {
+# SQLSyntax representing an Infix operator
+class OpInfix does SQLSyntax is export {
     has $.op;
     has $.left;
     has $.right;
 
-    method new(Str $op, $left, $right) {
+    method new($op, $left, $right) {
         self.bless(:$op, :$left, :$right);
     }
 
