@@ -14,7 +14,10 @@ subtest 'select clause', {
         is .bind, [];
     }
 
-    is $sql.from('table').select(:all).build.sql, 'SELECT * FROM "table"';
+    with $sql.from('table').select(:all).build {
+        is .sql, 'SELECT * FROM "table"';
+        is .bind, [];
+    }
 };
 
 subtest 'where clause', {
@@ -55,6 +58,11 @@ subtest 'where clause', {
     with $sql.from('table').where(:or, [<foo = 1>, <bar = 2>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? OR "bar" = ?';
         is .bind, [<1 2>];
+    }
+
+    with $sql.from('table').where(:foo(Nil)).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "foo" IS NULL';
+        is .bind, [];
     }
 }
 

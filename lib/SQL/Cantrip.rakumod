@@ -164,11 +164,16 @@ class ConditionClause does SQLSyntax {
             given $clause {
                 when Pair {
                     my $key = fragment(Identifier, $clause.key).build-fragment;
-                    my $value = fragment(Placeholder, $clause.value).build-fragment;
 
-                    push @parts, "{$key.sql} = {$value.sql}";
-                    append @bind, $key.bind;
-                    append @bind, $value.bind;
+                    if $clause.value === Nil {
+                        push @parts, "{$key.sql} IS NULL";
+                        append @bind, $key.bind;
+                    } else {
+                        my $value = fragment(Placeholder, $clause.value).build-fragment;
+                        push @parts, "{$key.sql} = {$value.sql}";
+                        append @bind, $key.bind;
+                        append @bind, $value.bind;
+                    }
                 }
                 when Positional {
                     die "wrong number of args!!" unless $clause.elems == 3;
