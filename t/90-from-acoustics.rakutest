@@ -4,9 +4,24 @@ use SQL::Cantrip;
 my $sql = SQL::Cantrip.new;
 
 # These SQL queries are extracted from another project to have complex examples
-subtest 'list-history', {
-    # my $q = $sql.from('history').join('songs', :on());
-    ok 1;
+subtest 'search-history', {
+    my $history-who = 'ak';
+    my $q = $sql.from('history').
+        select(['songs.song-id', Raw.fmt('{} / 2.0 AS rating', Identifier.new('ratings.rating')), 'history.who::jsonb']).
+        join('songs', :on(['songs.song-id', '=', Identifier.new('history.song-id')])).
+        join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', qq!["$history-who"]!])).
+        order-by(Raw.fmt('{} DESC', Identifier.new('song-start')));
+
+
+    with $q.build {
+        is .sql, q{
+        SELECT "songs"."song-id", "ratings"."rating" / 2.0 AS rating, "history"."who"::jsonb
+        FROM "history" JOIN "songs" ON "songs"."song-id" = "history"."song-id"
+        LEFT JOIN "ratings" ON "songs"."song-id" = "ratings"."song-id" AND "ratings"."who" = ?
+        ORDER BY "song-start" DESC
+        }.subst(:g, /\s+/, ' ').trim;
+        is .bind, [qq!["$history-who"]!];
+    }
 };
 
 subtest 'history-dates', {
@@ -46,10 +61,10 @@ subtest 'random-songs', {
     my $outer-q = $sql.from(:random-songs($inner-q)).
         join('songs', :on('songs.song-id', '=', Identifier.new('random-songs.song-id'))).
         join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).
-        select(<songs.song-id artist album title>);
+        select(<songs.song-id artist album title>, Raw.fmt('{} / 2.0 AS rating', Identifier.new("rating")));
 
     my $outer-sql = qq{
-        SELECT "songs"."song-id", "artist", "album", "title"
+        SELECT "songs"."song-id", "artist", "album", "title", "rating" / 2.0 AS rating
         FROM ($inner-sql) AS "random-songs"
         JOIN "songs" ON "songs"."song-id" = "random-songs"."song-id"
         LEFT JOIN "ratings" ON "songs"."song-id" = "ratings"."song-id" AND "ratings"."who" = ?
@@ -78,6 +93,56 @@ subtest 'load-songs', {
             ORDER BY "t"."ord"
         }.subst(:g, /\s+/, ' ').trim;
         is .bind, [1234, 'myuser'];
+    }
+};
+
+subtest 'get-playlists', {
+    my $inner-playlist-contents = $sql.from('playlists').
+        select(['playlist-id', :contents(Fn.new('jsonb_array_elements_text', 'contents'))]).
+        group-by('playlist-id');
+
+    my $inner-playlist-sql = q{
+        SELECT "playlist-id", jsonb_array_elements_text("contents") AS "contents"
+        FROM "playlists"
+        GROUP BY "playlist-id"
+    }.subst(:g, /\s+/, ' ').trim;
+
+    with $inner-playlist-contents.build {
+        is .sql, $inner-playlist-sql;
+        is .bind, [];
+    }
+
+    my $songs-of-playlists = $sql.from('songs').
+        join($inner-playlist-contents, :as('inner-playlist-contents'), :on('songs.song-id', '=', Identifier.new('inner-playlist-contents.contents::uuid'))).
+        select(<song-id length path inner-playlist-contents.playlist-id art-id>);
+
+    my $songs-of-playlists-sql = qq{
+        SELECT "song-id", "length", "path", "inner-playlist-contents"."playlist-id", "art-id"
+        FROM "songs" JOIN ($inner-playlist-sql)
+        AS "inner-playlist-contents"
+        ON "songs"."song-id" = "inner-playlist-contents"."contents"::uuid
+    }.subst(:g, /\s+/, ' ').trim;
+
+    with $songs-of-playlists.build {
+        is .sql, $songs-of-playlists-sql;
+        is .bind, [];
+    }
+
+    my $playlists-with-art = $sql.from('playlists').
+        join(:left, $songs-of-playlists, :using('playlist-id'), :as('data')).
+        select([:length(Fn.new('SUM', 'data.length')), :count(Fn.new('COUNT', 'data')), |<playlists.playlist-id title who>, :art-id(Raw.fmt('mode() WITHIN GROUP(ORDER BY {})', Identifier.new('data.art-id')))]).
+        group-by('playlists.playlist-id').
+        order-by('playlists.title');
+
+    with $playlists-with-art.build {
+        is .sql, qq{
+            SELECT SUM("data"."length") AS "length", COUNT("data") AS "count", "playlists"."playlist-id", "title", "who", mode() WITHIN GROUP(ORDER BY "data"."art-id") AS "art-id"
+            FROM "playlists" LEFT JOIN ($songs-of-playlists-sql)
+            AS "data" USING ("playlist-id")
+            GROUP BY "playlists"."playlist-id"
+            ORDER BY "playlists"."title"
+        }.subst(:g, /\s+/, ' ').trim;
+        is .bind, [];
     }
 };
 

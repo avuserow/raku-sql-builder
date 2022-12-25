@@ -200,19 +200,28 @@ class ConditionClause does SQLSyntax {
 my class Join does SQLSyntax {
     has $.mode;
     has $.table;
+    has $.alias;
     has $.join-type;
     has ConditionClause $.on;
+    has SQLSyntax $.using;
 
-    submethod BUILD(:$mode, :$table, :@on) {
+    submethod BUILD(:$mode, :$table, :@on, :$alias, :$using) {
         $!table = $table;
         $!mode = $mode;
+        $!alias = $alias;
 
         # XXX: would be better to reuse the where clause logic somehow
         # most likely to push that logic into ConditionClause
-        if @on[0] ~~ Pair && @on[0].key eq 'and'|'or' && @on[0].value ~~ Bool  {
-            $!on = ConditionClause.new(:mode(@on[0].key), :clauses(@on[1..*]));
-        } else {
-            $!on = ConditionClause.new(:clauses(@on));
+        if @on {
+            if @on[0] ~~ Pair && @on[0].key eq 'and'|'or' && @on[0].value ~~ Bool  {
+                $!on = ConditionClause.new(:mode(@on[0].key), :clauses(@on[1..*]));
+            } else {
+                $!on = ConditionClause.new(:clauses(@on));
+            }
+        }
+
+        if $using {
+            $!using = fragment(Identifier, $using);
         }
     }
 
@@ -225,9 +234,20 @@ my class Join does SQLSyntax {
             append @bind, .bind;
         }
 
+        if $!alias {
+            $sql ~= " AS {quote-column($!alias)}";
+        }
+
         if $!on {
             with $!on.build-fragment {
                 $sql ~= ' ON ' ~ .sql;
+                append @bind, .bind;
+            }
+        }
+
+        if $!using {
+            with $!using.build-fragment {
+                $sql ~= " USING ({.sql})";
                 append @bind, .bind;
             }
         }
@@ -292,19 +312,19 @@ class SelectBuilder does SQLSyntax {
     }
 
     # Don't use multi method here to avoid inheriting Cool.join
-    method join($table, :@on, :@using, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
+    method join($table, :@on, :$using, Str :$as, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
         my @modes = (:$inner, :$left, :$right, :$full).grep({.value});
         if @modes > 1 {
             die "Multiple join types passed: must use only one of :inner :left :right :full (you used @modes[])";
         }
 
-        unless one(@on, @using) {
+        unless one(@on, $using) {
             die "Must specify exactly one of :on or :using for join criteria";
         }
 
         my $mode = @modes[0].key.uc if @modes;
 
-        push @!join-items, Join.new(:$mode, :$table, :@on);
+        push @!join-items, Join.new(:$mode, :$table, :@on, :$using, :alias($as));
         self;
     }
 
