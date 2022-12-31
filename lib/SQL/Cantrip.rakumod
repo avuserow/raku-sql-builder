@@ -75,7 +75,6 @@ class Placeholder does SQLSyntax is export {
     }
 }
 
-
 my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @items, Str :$join = '') {
     for @items.kv -> $i, $value {
         my $item = $value.does(SQLSyntax) ?? $value.build-fragment !! $default-class.new($value).build-fragment;
@@ -84,6 +83,7 @@ my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @item
         append @bind, $item.bind;
     }
 }
+
 # SQLSyntax representing a raw value, unescaped in any way
 class Raw does SQLSyntax is export {
     has $.value;
@@ -227,7 +227,7 @@ my class Join does SQLSyntax {
 
     method build-fragment {
         my @bind;
-        my $sql = $!mode ?? $!mode ~ ' JOIN ' !! 'JOIN ';
+        my $sql = $!mode ?? "$!mode JOIN " !! 'JOIN ';
 
         with fragment(Identifier, $!table).build-fragment {
             $sql ~= .sql;
@@ -264,6 +264,18 @@ class SelectBuilder does SQLSyntax {
     has @.order-columns;
     has @.group-by-columns;
     has SQLSyntax $.limit-count;
+
+    method clone {
+        nextwith (
+            select-columns => @!select-columns.clone,
+            from => $!from.clone,
+            join-items => @!join-items.clone,
+            where => $!where.clone,
+            order-columns => @!order-columns.clone,
+            group-by-columns => @!group-by-columns.clone,
+            limit-count => $!limit-count.clone,
+            |%_);
+    }
 
     # Single pair
     multi method where(*%clauses where *.elems == 1) {
