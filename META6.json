@@ -9,14 +9,14 @@
   ],
   "description": "blah blah blah",
   "license": "Artistic-2.0",
-  "name": "SQL::Cantrip",
+  "name": "SQL::Builder",
   "perl": "6.d",
   "provides": {
-    "SQL::Cantrip": "lib/SQL/Cantrip.rakumod"
+    "SQL::Builder": "lib/SQL/Builder.rakumod"
   },
   "resources": [
   ],
-  "source-url": "",
+  "source-url": "whisper:raku-sql-cantrip.git",
   "tags": [
   ],
   "test-depends": [

@@ -1,4 +1,4 @@
-unit class SQL::Cantrip;
+unit class SQL::Builder;
 
 my sub quote-value(Str $s) {
     my $q = $s.subst("'", "''");
@@ -519,19 +519,19 @@ method fn {
 
 =head1 NAME
 
-SQL::Cantrip - blah blah blah
+SQL::Builder - blah blah blah
 
 =head1 SYNOPSIS
 
 =begin code :lang<raku>
 
-use SQL::Cantrip;
+use SQL::Builder;
 
 =end code
 
 =head1 DESCRIPTION
 
-SQL::Cantrip is ...
+SQL::Builder is ...
 
 =head1 AUTHOR
 

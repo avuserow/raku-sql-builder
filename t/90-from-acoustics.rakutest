@@ -1,7 +1,7 @@
 use Test;
-use SQL::Cantrip;
+use SQL::Builder;
 
-my $sql = SQL::Cantrip.new;
+my $sql = SQL::Builder.new;
 
 # These SQL queries are extracted from another project to have complex examples
 subtest 'search-history', {

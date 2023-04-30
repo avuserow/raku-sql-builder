@@ -1,19 +1,19 @@
 NAME
 ====
 
-SQL::Cantrip - blah blah blah
+SQL::Builder - blah blah blah
 
 SYNOPSIS
 ========
 
 ```raku
-use SQL::Cantrip;
+use SQL::Builder;
 ```
 
 DESCRIPTION
 ===========
 
-SQL::Cantrip is ...
+SQL::Builder is ...
 
 AUTHOR
 ======
