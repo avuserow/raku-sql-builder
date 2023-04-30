@@ -5,13 +5,12 @@ my $sql = SQL::Cantrip.new;
 
 # These SQL queries are extracted from another project to have complex examples
 subtest 'search-history', {
-    my $history-who = 'ak';
+    my $ratings-who = 'ak';
     my $q = $sql.from('history').
         select(['songs.song-id', Raw.fmt('{} / 2.0 AS rating', Identifier.new('ratings.rating')), 'history.who::jsonb']).
         join('songs', :on(['songs.song-id', '=', Identifier.new('history.song-id')])).
-        join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', qq!["$history-who"]!])).
+        join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', $ratings-who])).
         order-by(Raw.fmt('{} DESC', Identifier.new('song-start')));
-
 
     with $q.build {
         is .sql, q{
@@ -20,7 +19,7 @@ subtest 'search-history', {
         LEFT JOIN "ratings" ON "songs"."song-id" = "ratings"."song-id" AND "ratings"."who" = ?
         ORDER BY "song-start" DESC
         }.subst(:g, /\s+/, ' ').trim;
-        is .bind, [qq!["$history-who"]!];
+        is .bind, [$ratings-who];
     }
 };
 

@@ -2,12 +2,12 @@ unit class SQL::Cantrip;
 
 my sub quote-value(Str $s) {
     my $q = $s.subst("'", "''");
-    return "'$s'";
+    return qq!'$s'!;
 }
 
 my sub quote-column(Str $s) {
     my $q = $s.subst('"', '""');
-    return '"' ~ $s ~ '"';
+    return qq!"$s"!;
 }
 
 class SQLFragment {
@@ -400,13 +400,58 @@ class SelectBuilder does SQLSyntax {
     }
 }
 
+# TODO: implement table/column helpers
+# class Condition {
+#     has $.left;
+#     has $.op;
+#     has $.right;
+# }
+# class Column is Identifier {
+#     method EQ($other) {
+#         if $other.defined {
+#             return Condition.new(:left(self), :op('='), :right(fragment(Placeholder, $other)));
+#         } else {
+#             return Condition.new(:left(self), :op('IS'), :right(Raw.new('NULL')));
+#         }
+#     }
+# 
+#     method NE($other) {
+#         if $other.defined {
+#             return Condition.new(:left(self), :op('!='), :right(fragment(Placeholder, $other)));
+#         } else {
+#             return Condition.new(:left(self), :op('IS NOT'), :right(Raw.new('NULL')));
+#         }
+#     }
+# 
+#     method GT($other) {
+#         Condition.new(:left(self), :op('>'), :right(fragment(Placeholder, $other)));
+#     }
+# }
+# 
+# class ColumnSpec is export {
+#     has %!columns is built;
+# 
+#     method new($table-name, :@columns) {
+#         my %columns = @columns.map({$_ => Column.new($table-name ~ '.' ~ $_)});
+#         self.bless(:%columns);
+#     }
+# 
+#     method FALLBACK($name) {
+#         if %!columns{$name}:exists {
+#             return %!columns{$name};
+#         }
+# 
+#         die "no such column: '$name'";
+#     }
+# }
+
 # Multiple FROM sources NYI
 multi method from(*%pairs where *.elems == 1) {
     my $pair = %pairs.head;
     my $alias = $pair.key;
     my $select = $pair.value.build;
 
-    # XXX: teach SelectBuilder about this syntax instead
+    # XXX: can we teach SelectBuilder about this syntax instead
     my $from = Raw.new("({$select.sql}) AS {quote-column($alias)}", :bind($select.bind));
     return SelectBuilder.new(:$from);
 }
@@ -415,6 +460,60 @@ multi method from(Str $table) {
     return SelectBuilder.new(:from(Identifier.new($table)));
 }
 
+multi method from(Identifier $table) {
+    return SelectBuilder.new(:from($table));
+}
+
+# TODO: implement these
+# class UpdateBuilder does SQLSyntax {
+#     has SQLSyntax $.from;
+#     has ... @.values;
+#     has ... $.returning;
+#     has ConditionClause $.where;
+# }
+# 
+# multi method update(Str $table) {
+#     return UpdateBuilder.new(:table(Identifier.new($table)));
+# }
+# 
+# multi method update(Identifier $table) {
+#     return UpdateBuilder.new(:$table);
+# }
+# 
+# class InsertBuilder does SQLSyntax {
+#     has SQLSyntax $.from;
+#     has ... @.values;
+#     has ... $.returning;
+#     has ... $.on-conflict;
+# }
+# 
+# multi method insert-into(Str $table) {
+#     return InsertBuilder.new(:table(Identifier.new($table)));
+# }
+# 
+# multi method insert-into(Identifier $table) {
+#     return InsertBuilder.new(:$table);
+# }
+# 
+# class DeleteBuilder does SQLSyntax {
+#     has SQLSyntax $.from;
+#     has ... @.values;
+#     has ... $.returning;
+#     has ConditionClause $.where;
+# }
+# 
+# 
+# multi method delete-from(Str $table) {
+#     return DeleteBuilder.new(:table(Identifier.new($table)));
+# }
+# 
+# multi method delete-from(Identifier $table) {
+#     return DeleteBuilder.new(:$table);
+# }
+
+method fn {
+    return Fn;
+}
 
 =begin pod
 
