@@ -4,63 +4,71 @@ use SQL::Builder;
 my $sql = SQL::Builder.new;
 
 subtest 'select clause', {
-    with $sql.from('table').select('foo').build {
+    given $sql.from('table').select('foo').build {
         is .sql, 'SELECT "foo" FROM "table"';
         is .bind, [];
     }
 
-    with $sql.from('table').select('table.foo').build {
+    given $sql.from('table').select('table.foo').build {
         is .sql, 'SELECT "table"."foo" FROM "table"';
         is .bind, [];
     }
 
-    with $sql.from('table').select(:all).build {
+    given $sql.from('table').select(:all).build {
         is .sql, 'SELECT * FROM "table"';
         is .bind, [];
     }
 };
 
 subtest 'where clause', {
-    with $sql.from('table').where(:bar<bar>).select('foo').build {
+    given $sql.from('table').where(:bar<bar>).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
         is .bind, ['bar'];
     }
-    with $sql.from('table').where(<bar = bar>).select('foo').build {
+    given $sql.from('table').where(<bar = bar>).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
         is .bind, ['bar'];
     }
-    with $sql.from('table').where([:bar<bar>]).select('foo').build {
+    given $sql.from('table').where([['bar', '=', 'bar'],]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
         is .bind, ['bar'];
     }
-    with $sql.from('table').where(:and, [:bar<bar>]).select('foo').build {
+    given $sql.from('table').where(['bar', '=', 'bar']).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
         is .bind, ['bar'];
     }
-    with $sql.from('table').where(:or, [:bar<bar>]).select('foo').build {
+    given $sql.from('table').where([:bar<bar>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    given $sql.from('table').where(:and, [:bar<bar>]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
+        is .bind, ['bar'];
+    }
+    given $sql.from('table').where(:or, [:bar<bar>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ?';
         is .bind, ['bar'];
     }
 
-    with $sql.from('table').where(:and, [:bar<bar>, :baz<baz>]).select('foo').build {
+    given $sql.from('table').where(:and, [:bar<bar>, :baz<baz>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? AND "baz" = ?';
         is .bind, <bar baz>;
     }
-    with $sql.from('table').where(:or, [:bar<bar>, :baz<baz>]).select('foo').build {
+    given $sql.from('table').where(:or, [:bar<bar>, :baz<baz>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "bar" = ? OR "baz" = ?';
         is .bind, <bar baz>;
     }
 
-    with $sql.from('table').where(:and, [<foo = 1>, <bar = 2>]).select('foo').build {
+    given $sql.from('table').where(:and, [<foo = 1>, <bar = 2>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? AND "bar" = ?';
         is .bind, [<1 2>];
     }
-    with $sql.from('table').where(:or, [<foo = 1>, <bar = 2>]).select('foo').build {
+    given $sql.from('table').where(:or, [<foo = 1>, <bar = 2>]).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? OR "bar" = ?';
         is .bind, [<1 2>];
     }
 
-    with $sql.from('table').where(:foo(Nil)).select('foo').build {
+    given $sql.from('table').where(:foo(Nil)).select('foo').build {
         is .sql, 'SELECT "foo" FROM "table" WHERE "foo" IS NULL';
         is .bind, [];
     }
@@ -70,24 +78,24 @@ subtest 'subselect', {
     my $inner = $sql.from('table').select('id');
     is $sql.from(:$inner).select(:all).build.sql, 'SELECT * FROM (SELECT "id" FROM "table") AS "inner"';
 
-    with $sql.from('table').select(:all).where(['id', 'IN', $inner]).build  {
+    given $sql.from('table').select(:all).where(['id', 'IN', $inner]).build  {
         is .sql, 'SELECT * FROM "table" WHERE "id" IN (SELECT "id" FROM "table")';
         is .bind, [];
     }
 };
 
 subtest 'join', {
-    with $sql.from('t1').join('t2', :on('t1.foo', '=', Identifier.new('t2.foo'))).select('t1.foo').build {
+    given $sql.from('t1').join('t2', :on('t1.foo', '=', Identifier.new('t2.foo'))).select('t1.foo').build {
         is .sql, 'SELECT "t1"."foo" FROM "t1" JOIN "t2" ON "t1"."foo" = "t2"."foo"';
         is .bind, [];
     }
 
-    with $sql.from('t1').join(:left, 't2', :on('t1.foo', '=', Identifier.new('t2.foo'))).select('t1.foo').build {
+    given $sql.from('t1').join(:left, 't2', :on('t1.foo', '=', Identifier.new('t2.foo'))).select('t1.foo').build {
         is .sql, 'SELECT "t1"."foo" FROM "t1" LEFT JOIN "t2" ON "t1"."foo" = "t2"."foo"';
         is .bind, [];
     }
 
-    with $sql.from('t1').join('t2', :on(:and, ['t1.foo', '=', Identifier.new('t2.foo')], ['t1.bar', '=', 'hello world'])).select('t1.foo').build {
+    given $sql.from('t1').join('t2', :on(:and, ['t1.foo', '=', Identifier.new('t2.foo')], ['t1.bar', '=', 'hello world'])).select('t1.foo').build {
         is .sql, 'SELECT "t1"."foo" FROM "t1" JOIN "t2" ON "t1"."foo" = "t2"."foo" AND "t1"."bar" = ?';
         is .bind, ['hello world'];
     }

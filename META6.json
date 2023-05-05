@@ -7,7 +7,7 @@
   ],
   "depends": [
   ],
-  "description": "blah blah blah",
+  "description": "build SQL statements",
   "license": "Artistic-2.0",
   "name": "SQL::Builder",
   "perl": "6.d",
@@ -16,7 +16,7 @@
   },
   "resources": [
   ],
-  "source-url": "whisper:raku-sql-cantrip.git",
+  "source-url": "https://github.com/avuserow/raku-sql-builder",
   "tags": [
   ],
   "test-depends": [

@@ -1,0 +1,54 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'where edge cases', {
+    dies-ok {
+        $sql.from('table').where(:foo, :bar).select('foo').build;
+    }, 'multiple clauses not allowed without list and :and';
+
+    dies-ok {
+        $sql.from('table').where([:foo, :bar, :baz]).select('foo').build;
+    }, 'multiple clauses not allowed without :and';
+
+    dies-ok {
+        $sql.from('table').where(:and, :foo, :bar, :baz).select('foo').build;
+    }, 'multiple clauses not allowed without list';
+
+    dies-ok {
+        $sql.from('table').where(<a b>).select('foo').build;
+    }, 'insufficient items in a clause';
+
+    dies-ok {
+        $sql.from('table').where(<a b c d e>).select('foo').build;
+    }, 'too many items in a clause';
+};
+
+subtest 'where-subgroup', {
+    dies-ok {
+        $sql.from('table').where(:and, :foo(0), \(:or[:bar(1), :bar(0)])).select('foo').build;
+    }, 'common typo detected';
+
+    dies-ok {
+        $sql.from('table').where(:and, :or, [:foo(1)]).select('foo').build;
+    }, 'common typo detected';
+
+    given $sql.from('table').where(:and, [:foo(1), \(:or[:bar(2), :bar(3)])]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE "foo" = ? AND ("bar" = ? OR "bar" = ?)';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').where(\(:or[:bar(2), :bar(3)])).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE ("bar" = ? OR "bar" = ?)';
+        is .bind, [2, 3];
+    }
+
+    given $sql.from('table').where([\(:or[:bar(4), :bar(5)])]).select('foo').build {
+        is .sql, 'SELECT "foo" FROM "table" WHERE ("bar" = ? OR "bar" = ?)';
+        is .bind, [4, 5];
+    }
+
+};
+
+done-testing;
