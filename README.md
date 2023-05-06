@@ -1,3 +1,5 @@
+[![Actions Status](https://github.com/avuserow/raku-sql-builder/actions/workflows/test.yml/badge.svg)](https://github.com/avuserow/raku-sql-builder/actions)
+
 NAME
 ====
 
@@ -100,17 +102,19 @@ The `fmt` method lets you safely build bits of SQL by providing a template conta
 
 Examples:
 
-    Raw.fmt("COUNT({}) AS {}", Identifier.new("artist"), Identifier.new("artistcount"))
-    # sql: COUNT("artist") AS "artistcount"
-    # bind: []
+```raku
+Raw.fmt("COUNT({}) AS {}", Identifier.new("artist"), Identifier.new("artistcount"))
+# sql: COUNT("artist") AS "artistcount"
+# bind: []
 
-    Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new(@ids))
-    # sql: unnest(?::uuid[]) WITH ORDINALITY t(id, ord)
-    # bind: [@ids,]
+Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new(@ids))
+# sql: unnest(?::uuid[]) WITH ORDINALITY t(id, ord)
+# bind: [@ids,]
 
-    Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'))
-    # sql: date_trunc('day', "song-start")
-    # bind: []
+Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'))
+# sql: date_trunc('day', "song-start")
+# bind: []
+```
 
 Fn
 --
@@ -119,13 +123,15 @@ Fn (function) is a helper to make function calls. The first item is taken as a R
 
 Examples:
 
-    Fn.new('COUNT', 'artists')
-    # sql: COUNT("artists")
-    # bind: []
+```raku
+Fn.new('COUNT', 'artists')
+# sql: COUNT("artists")
+# bind: []
 
-    Fn.new('ANY', @my-stuff)
-    # sql: ANY(?)
-    # bind: [@my-stuff,]
+Fn.new('ANY', @my-stuff)
+# sql: ANY(?)
+# bind: [@my-stuff,]
+```
 
 SELECT QUERIES
 ==============
@@ -146,9 +152,11 @@ from(Pair[Str, SelectBuilder])
 
 Creates a subselect from the provided SelectBuilder, aliased to the provided Str. Contrived example:
 
-    my $inner-q = $sql.from('foo').select('bar');
-    my $q = $sql.from(:inner($inner-q)).select('bar');
-    # SELECT "bar" FROM (SELECT "bar" FROM "foo") AS "inner"
+```raku
+my $inner-q = $sql.from('foo').select('bar');
+my $q = $sql.from(:inner($inner-q)).select('bar');
+# SELECT "bar" FROM (SELECT "bar" FROM "foo") AS "inner"
+```
 
 select(:all)
 ------------
@@ -162,35 +170,41 @@ Specifies the list of values to return. Each column defaults to `Identifier`.
 
 If a `Pair` is provided, then this is treated as a column alias:
 
-    $sql.from('table').select(:foo<bar>);
-    # sql: SELECT "bar" AS "foo" FROM "table"
+```raku
+$sql.from('table').select(:foo<bar>);
+# sql: SELECT "bar" AS "foo" FROM "table"
+```
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the Pairs will always be at the end. You can avoid this by passing an Array, or parenthesizing the Pairs:
 
-    $sql.from('table').select(<foo bar>, :a<b>, :c<d>)
-    # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
+```raku
+$sql.from('table').select(<foo bar>, :a<b>, :c<d>)
+# SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
 
-    $sql.from('table').select(:a<b>, <foo bar>, :c<d>)
-    # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
+$sql.from('table').select(:a<b>, <foo bar>, :c<d>)
+# SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
 
-    # Instead, pass all values as positional elements, in any of the following ways:
-    $sql.from('table').select([:a<b>, "foo", "bar", :c<d>])
-    $sql.from('table').select([:a<b>, <foo bar>.flat, :c<d>])
-    $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>))
-    # SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
+# Instead, pass all values as positional elements, in any of the following ways:
+$sql.from('table').select([:a<b>, "foo", "bar", :c<d>])
+$sql.from('table').select([:a<b>, <foo bar>.flat, :c<d>])
+$sql.from('table').select((:a<b>), "foo", "bar", (:c<d>))
+# SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
+```
 
 where($clause)
 --------------
 
 Provide a `WHERE` clause with a single value:
 
-    $sql.from('users').select('email').where(:username<ak>)
-    # sql: SELECT "email" FROM "users" WHERE "username" = ?
-    # bind: ["ak",]
+```raku
+$sql.from('users').select('email').where(:username<ak>)
+# sql: SELECT "email" FROM "users" WHERE "username" = ?
+# bind: ["ak",]
 
-    $sql.from('users').select('email').where(["username", "=", "ak"])
-    # sql: SELECT "email" FROM "users" WHERE "username" = ?
-    # bind: ["ak",]
+$sql.from('users').select('email').where(["username", "=", "ak"])
+# sql: SELECT "email" FROM "users" WHERE "username" = ?
+# bind: ["ak",]
+```
 
 The parameter is used as a single-item `ConditionClause`. See the `ConditionClause` documentation below for all the options.
 
@@ -199,14 +213,18 @@ where(:and/:or @where)
 
 Provide a `WHERE` clause with many values. You must pass either `:and` or `:or`, which determines how the list of values is joined. The values are used as a `ConditionClause`, see the documentation below for the details.
 
-    $sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]])
-    # sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
-    # bind: ["%gmail.com", "%googlemail.com"]
+```raku
+$sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]])
+# sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
+# bind: ["%gmail.com", "%googlemail.com"]
+```
 
 Note that the `@where` clause must be a singular `List` when passing multiple clauses. The above example cannot be written as:
 
-    $sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"])
-    # ERROR ERROR ERROR
+```raku
+$sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"])
+# ERROR ERROR ERROR
+```
 
 join($table, :@on, :$using, Str :$as, :$inner/:$left/:$right/:$full)
 --------------------------------------------------------------------
@@ -225,56 +243,64 @@ There is currently no way to clear the list of JOINs from a query.
 
 Examples:
 
-    $sql.from('t1').join('t2', :using<id>).select(<t1.foo t2.bar>);
-    # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" USING("id")
+```raku
+$sql.from('t1').join('t2', :using<id>).select(<t1.foo t2.bar>);
+# sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" USING("id")
 
-    my $inner = $sql.from('t1').select(:bar<foo>, 'id');
-    $sql.from('t2').
-        join(:left, $inner, :as<inner>, :on['inner.id', '=', Identifier.new('t2.id')]).
-        select(<t1.foo t2.bar>);
-    # sql: SELECT "t1"."foo", "t2"."bar" FROM "t2" LEFT JOIN (SELECT "id", "foo" AS "bar" FROM "t1") AS "inner" ON "inner"."id" = "t2"."id"
+my $inner = $sql.from('t1').select(:bar<foo>, 'id');
+$sql.from('t2').
+    join(:left, $inner, :as<inner>, :on['inner.id', '=', Identifier.new('t2.id')]).
+    select(<t1.foo t2.bar>);
+# sql: SELECT "t1"."foo", "t2"."bar" FROM "t2" LEFT JOIN (SELECT "id", "foo" AS "bar" FROM "t1") AS "inner" ON "inner"."id" = "t2"."id"
 
-    $sql.from('t1').
-        join('t2', :on[:and, ["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"]]).
-        select(<t1.foo t2.bar>);
-    # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" ON "t1.id" = "t2.id" AND "t1"."foo" < "t2"."foo"
+$sql.from('t1').
+    join('t2', :on[:and, ["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"]]).
+    select(<t1.foo t2.bar>);
+# sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" ON "t1.id" = "t2.id" AND "t1"."foo" < "t2"."foo"
+```
 
 limit(Int $n)
 -------------
 
 Provides a `LIMIT` clause (with the specified value as a placeholder):
 
-    $sql.from('table').select(<foo bar>).limit(1)
-    # sql: SELECT "foo", "bar" FROM "table" LIMIT ?
-    # bind: 1
+```raku
+$sql.from('table').select(<foo bar>).limit(1)
+# sql: SELECT "foo", "bar" FROM "table" LIMIT ?
+# bind: 1
+```
 
 group-by(*@columns)
 -------------------
 
 Provides a `GROUP BY` clause on the specified columns:
 
-    $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year')
-    # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
+```raku
+$sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year')
+# SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
+```
 
 order-by(*@columns)
 -------------------
 
 Provides an `ORDER BY` clause on the specified columns:
 
-    # pick 10 shortest lengths
-    $sql.from('songs').select('title').order-by('length').limit(10)
-    # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
-    # bind: 10
+```raku
+# pick 10 shortest shortest songs
+$sql.from('songs').select('title').order-by('length').limit(10)
+# sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
+# bind: 10
 
-    # pick 10 biggest lengths
-    $sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10)
-    # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
-    # bind: 10
+# pick 10 longest songs
+$sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10)
+# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
+# bind: 10
 
-    # pick 10 random items
-    $sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10)
-    # sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
-    # bind: 10
+# pick 10 random items
+$sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10)
+# sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
+# bind: 10
+```
 
 build()
 -------
@@ -286,13 +312,117 @@ clone()
 
 Returns a new `SelectBuilder` in the same state. Useful if you want to have a common set of options, and then use many times:
 
-    sub getuser {
-        state $q = $sql.from('users').select(<username email address>);
-        $q.clone;
-    }
+```raku
+sub getuser {
+    state $q = $sql.from('users').select(<username email address>);
+    $q.clone;
+}
 
-    # multiple times later:
-    $db.query(.sql, |.bind) given getuser().where(:$username).build;
+# multiple times later:
+$db.query(.sql, |.bind) given getuser().where(:$username).build;
+```
+
+ConditionClause
+===============
+
+The `ConditionClause` syntax is how `SQL::Builder` encodes the options of the `WHERE` clause and the `JOIN ... ON` clause.
+
+At its core, this syntax is a list of items. Each item can be one of three values:
+
+3-Valued List
+-------------
+
+The main item is a list of exactly three items, typically a column (`Identifier`), an operator (`Raw`), and a `Placeholder` value.
+
+```raku
+$q.where(["a", "=", 1])
+# sql: ... WHERE a = ?
+# bind: [1,]
+```
+
+Any of these three can be replaced by an explicit type from the "Type System" section above:
+
+```raku
+$q.where([Fn.new("lower", "a"), "=", Fn.new("lower", "b")])
+# sql: ... WHERE lower("a") = lower("b")
+
+$q.where(["b", ">=", Raw.fmt("{} / 2.0", Placeholder.new(3))])
+# sql: ... WHERE "b" >= ? / 2.0
+# bind: [3,]
+```
+
+Pair
+----
+
+As a convenience, a Pair is used for equality.
+
+```raku
+$q.where([:a(1)])
+# sql: ... WHERE "a" = ?
+# bind: [1,]
+
+$q.where([:$a])
+# sql: ... WHERE "a" = ?
+# bind: [$a,]
+```
+
+If the value is exactly `Nil`, then `IS NULL` is used instead. `Nil` is the only undefined value with this special treatment:
+
+```raku
+$q.where([:a(Nil)])
+# sql: ... WHERE "a" IS NULL
+```
+
+Sub-group (Capture)
+-------------------
+
+To represent a parenthesized sub-group, use a `Capture` with the `\(...)` syntax. This Capture must contain a single Pair, with the key of `and` or `or`, depending on which you want, and the value is another list that creates another `ConditionClause`.
+
+```raku
+$q.where(:and, [:a<b>, \(:or[
+    :c<d>, :e<f>
+])])
+# sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
+# bind: ["b", "d", "f"]
+```
+
+This syntax is chosen to avoid difficulties with flattening of lists in Raku. It also avoids some confusion between Pairs and single-item Hashes.
+
+AND, OR, and single items
+-------------------------
+
+If you pass multiple items in a clause, you must choose whether to use `AND` logic or `OR` logic:
+
+```raku
+$q.where([["a", "=", 1], :b(2)])
+# ERROR: don't know whether to use AND or OR
+
+$q.where(:and, [["a", "=", 1], :b(2)])
+# sql: a = ? AND b = ?
+
+$q.where(:or, [["a", "=", 1], :b(2)])
+# sql: a = ? OR b = ?
+
+# same applies for JOIN ... ON:
+$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]))
+# sql: ... JOIN "table" ON a = ? OR b = ?
+```
+
+Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
+
+If you pass a single item, you can avoid the outer list in the `where` method, as well as avoiding a meaningless `:and/:or`:
+
+```raku
+# these are the same:
+$q.where(["a", "=", 1])
+$q.where([["a", "=", 1]])
+$q.where([["a", "=", 1],])
+
+# also the same:
+$q.where(:a(1))
+$q.where([:a(1)])
+$q.where((:a(1)))
+```
 
 COMPATIBILITY
 =============

@@ -645,7 +645,7 @@ The C<fmt> method lets you safely build bits of SQL by providing a template cont
 
 Examples:
 
-=begin code
+=begin code :lang<raku>
 
 Raw.fmt("COUNT({}) AS {}", Identifier.new("artist"), Identifier.new("artistcount"))
 # sql: COUNT("artist") AS "artistcount"
@@ -667,7 +667,7 @@ Fn (function) is a helper to make function calls. The first item is taken as a R
 
 Examples:
 
-=begin code
+=begin code :lang<raku>
 
 Fn.new('COUNT', 'artists')
 # sql: COUNT("artists")
@@ -698,7 +698,7 @@ Creates a C<SelectBuilder> from the given table.
 
 Creates a subselect from the provided SelectBuilder, aliased to the provided Str. Contrived example:
 
-=begin code
+=begin code :lang<raku>
 
 my $inner-q = $sql.from('foo').select('bar');
 my $q = $sql.from(:inner($inner-q)).select('bar');
@@ -716,7 +716,7 @@ Specifies the list of values to return. Each column defaults to C<Identifier>.
 
 If a C<Pair> is provided, then this is treated as a column alias:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('table').select(:foo<bar>);
 # sql: SELECT "bar" AS "foo" FROM "table"
@@ -727,7 +727,7 @@ Note that due to Raku's handling of Pairs, if you mix Positional and non-Positio
 Pairs will always be at the end. You can avoid this by passing an Array, or parenthesizing the
 Pairs:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('table').select(<foo bar>, :a<b>, :c<d>)
 # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
@@ -747,7 +747,7 @@ $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>))
 
 Provide a C<WHERE> clause with a single value:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('users').select('email').where(:username<ak>)
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
@@ -768,7 +768,7 @@ Provide a C<WHERE> clause with many values. You must pass either C<:and> or C<:o
 how the list of values is joined. The values are used as a C<ConditionClause>, see the documentation
 below for the details.
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]])
 # sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
@@ -779,7 +779,7 @@ $sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["ema
 Note that the C<@where> clause must be a singular C<List> when passing multiple clauses. The above
 example cannot be written as:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"])
 # ERROR ERROR ERROR
@@ -808,7 +808,7 @@ There is currently no way to clear the list of JOINs from a query.
 
 Examples:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('t1').join('t2', :using<id>).select(<t1.foo t2.bar>);
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" USING("id")
@@ -829,7 +829,7 @@ $sql.from('t1').
 
 Provides a C<LIMIT> clause (with the specified value as a placeholder):
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('table').select(<foo bar>).limit(1)
 # sql: SELECT "foo", "bar" FROM "table" LIMIT ?
@@ -841,7 +841,7 @@ $sql.from('table').select(<foo bar>).limit(1)
 
 Provides a C<GROUP BY> clause on the specified columns:
 
-=begin code
+=begin code :lang<raku>
 
 $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year')
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
@@ -852,16 +852,16 @@ $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('a
 
 Provides an C<ORDER BY> clause on the specified columns:
 
-=begin code
+=begin code :lang<raku>
 
-# pick 10 shortest lengths
+# pick 10 shortest shortest songs
 $sql.from('songs').select('title').order-by('length').limit(10)
 # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
 # bind: 10
 
-# pick 10 biggest lengths
+# pick 10 longest songs
 $sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10)
-# sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
+# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
 # bind: 10
 
 # pick 10 random items
@@ -881,7 +881,7 @@ appear in the same order across invocations.
 
 Returns a new C<SelectBuilder> in the same state. Useful if you want to have a common set of options, and then use many times:
 
-=begin code
+=begin code :lang<raku>
 
 sub getuser {
     state $q = $sql.from('users').select(<username email address>);
@@ -890,6 +890,122 @@ sub getuser {
 
 # multiple times later:
 $db.query(.sql, |.bind) given getuser().where(:$username).build;
+
+=end code
+
+=head1 ConditionClause
+
+The C<ConditionClause> syntax is how C<SQL::Builder> encodes the options of the C<WHERE> clause and
+the C<JOIN ... ON> clause.
+
+At its core, this syntax is a list of items. Each item can be one of three values:
+
+=head2 3-Valued List
+
+The main item is a list of exactly three items, typically a column (C<Identifier>), an operator (C<Raw>), and a C<Placeholder> value.
+
+=begin code :lang<raku>
+
+$q.where(["a", "=", 1])
+# sql: ... WHERE a = ?
+# bind: [1,]
+
+=end code
+
+Any of these three can be replaced by an explicit type from the "Type System" section above:
+
+=begin code :lang<raku>
+
+$q.where([Fn.new("lower", "a"), "=", Fn.new("lower", "b")])
+# sql: ... WHERE lower("a") = lower("b")
+
+$q.where(["b", ">=", Raw.fmt("{} / 2.0", Placeholder.new(3))])
+# sql: ... WHERE "b" >= ? / 2.0
+# bind: [3,]
+
+=end code
+
+=head2 Pair
+
+As a convenience, a Pair is used for equality.
+
+=begin code :lang<raku>
+
+$q.where([:a(1)])
+# sql: ... WHERE "a" = ?
+# bind: [1,]
+
+$q.where([:$a])
+# sql: ... WHERE "a" = ?
+# bind: [$a,]
+
+=end code
+
+If the value is exactly C<Nil>, then C<IS NULL> is used instead. C<Nil> is the only undefined value
+with this special treatment:
+
+=begin code :lang<raku>
+
+$q.where([:a(Nil)])
+# sql: ... WHERE "a" IS NULL
+
+=end code
+
+=head2 Sub-group (Capture)
+
+To represent a parenthesized sub-group, use a C<Capture> with the C<\(...)> syntax. This Capture
+must contain a single Pair, with the key of C<and> or C<or>, depending on which you want, and the
+value is another list that creates another C<ConditionClause>.
+
+=begin code :lang<raku>
+
+$q.where(:and, [:a<b>, \(:or[
+    :c<d>, :e<f>
+])])
+# sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
+# bind: ["b", "d", "f"]
+
+=end code
+
+This syntax is chosen to avoid difficulties with flattening of lists in Raku. It also avoids some
+confusion between Pairs and single-item Hashes.
+
+=head2 AND, OR, and single items
+
+If you pass multiple items in a clause, you must choose whether to use C<AND> logic or C<OR> logic:
+
+=begin code :lang<raku>
+
+$q.where([["a", "=", 1], :b(2)])
+# ERROR: don't know whether to use AND or OR
+
+$q.where(:and, [["a", "=", 1], :b(2)])
+# sql: a = ? AND b = ?
+
+$q.where(:or, [["a", "=", 1], :b(2)])
+# sql: a = ? OR b = ?
+
+# same applies for JOIN ... ON:
+$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]))
+# sql: ... JOIN "table" ON a = ? OR b = ?
+
+=end code
+
+Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
+
+If you pass a single item, you can avoid the outer list in the C<where> method, as well as avoiding a meaningless C<:and/:or>:
+
+=begin code :lang<raku>
+
+# these are the same:
+$q.where(["a", "=", 1])
+$q.where([["a", "=", 1]])
+$q.where([["a", "=", 1],])
+
+# also the same:
+$q.where(:a(1))
+$q.where([:a(1)])
+$q.where((:a(1)))
 
 =end code
 
