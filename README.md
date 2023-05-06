@@ -270,6 +270,17 @@ $sql.from('table').select(<foo bar>).limit(1)
 # bind: 1
 ```
 
+offset(Int $n)
+--------------
+
+Provides a `OFFSET` clause (with the specified value as a placeholder):
+
+```raku
+$sql.from('table').select(<foo bar>).limit(1).offset(2)
+# sql: SELECT "foo", "bar" FROM "table" LIMIT ? OFFSET ?
+# bind: [1, 2]
+```
+
 group-by(*@columns)
 -------------------
 
@@ -279,6 +290,16 @@ Provides a `GROUP BY` clause on the specified columns:
 $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year')
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
 ```
+
+having($clause)
+---------------
+
+Provides a `HAVING` clause. This is handled identical to a `WHERE` clause, see the documentation above.
+
+having(:and/:or @having)
+------------------------
+
+Provides a `HAVING` clause. This is handled identical to a `WHERE` clause, see the documentation above.
 
 order-by(*@columns)
 -------------------

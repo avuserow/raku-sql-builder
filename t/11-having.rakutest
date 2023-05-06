@@ -1,0 +1,13 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'basic having test', {
+    given $sql.from('table').select('foo').group-by('foo').having([Fn.new('sum', 'length'), '>', 7200]).build {
+        is .sql, 'SELECT "foo" FROM "table" GROUP BY "foo" HAVING sum("length") > ?';
+        is .bind, [7200,];
+    }
+};
+
+done-testing;

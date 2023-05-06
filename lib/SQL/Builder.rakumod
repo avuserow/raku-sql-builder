@@ -279,7 +279,9 @@ class SelectBuilder does SQLSyntax {
     has ConditionClause $.where;
     has @.order-columns;
     has @.group-by-columns;
+    has ConditionClause $.having;
     has SQLSyntax $.limit-count;
+    has SQLSyntax $.offset-count;
 
     method clone {
         nextwith (
@@ -289,37 +291,44 @@ class SelectBuilder does SQLSyntax {
             where => $!where.clone,
             order-columns => @!order-columns.clone,
             group-by-columns => @!group-by-columns.clone,
+            having => $!having.clone,
             limit-count => $!limit-count.clone,
+            offset-count => $!offset-count.clone,
             |%_);
     }
 
-    # Single pair
-    multi method where(*%clauses where *.elems == 1) {
-        $!where = ConditionClause.new(:clauses(%clauses.head));
+    method where(|c) {
+        $!where = self.clause(|c);
         self;
+    }
+
+    method having(|c) {
+        $!having = self.clause(|c);
+        self;
+    }
+
+    # Single pair
+    multi method clause(*%clauses where *.elems == 1) {
+        ConditionClause.new(:clauses(%clauses.head));
     }
 
     # Single clause (value)
-    multi method where($clause, *%rest where *.elems == 0) {
-        $!where = ConditionClause.new(:clauses[$clause,]);
-        self;
+    multi method clause($clause, *%rest where *.elems == 0) {
+        ConditionClause.new(:clauses[$clause,]);
     }
 
     # Single clause (list)
-    multi method where(@clause where *.elems == 1, *%rest where *.elems == 0) {
-        $!where = ConditionClause.new(:clauses(@clause));
-        self;
+    multi method clause(@clause where *.elems == 1, *%rest where *.elems == 0) {
+        ConditionClause.new(:clauses(@clause));
     }
 
     # Multiple clauses
-    multi method where(@clauses, :$or!, *%rest where *.elems == 0) {
-        $!where = ConditionClause.new(:mode<or>, :@clauses);
-        self;
+    multi method clause(@clauses, :$or!, *%rest where *.elems == 0) {
+        ConditionClause.new(:mode<or>, :@clauses);
     }
 
-    multi method where(@clauses, :$and!, *%rest where *.elems == 0) {
-        $!where = ConditionClause.new(:mode<and>, :@clauses);
-        self;
+    multi method clause(@clauses, :$and!, *%rest where *.elems == 0) {
+        ConditionClause.new(:mode<and>, :@clauses);
     }
 
     # XXX: replace with either `select-all` or `select(Whatever)`?
@@ -340,6 +349,11 @@ class SelectBuilder does SQLSyntax {
 
     method limit(Int $limit) {
         $!limit-count = Placeholder.new($limit);
+        self;
+    }
+
+    method offset(Int $offset) {
+        $!offset-count = Placeholder.new($offset);
         self;
     }
 
@@ -407,6 +421,13 @@ class SelectBuilder does SQLSyntax {
         if @!group-by-columns {
             $sql ~= ' GROUP BY ';
             append-fragments($sql, @bind, Identifier, @!group-by-columns, :join(', '));
+        }
+
+        if $!having {
+            with $!having.?build-fragment {
+                $sql ~= ' HAVING ' ~ .sql;
+                append @bind, .bind;
+            }
         }
 
         if @!order-columns {
@@ -837,6 +858,18 @@ $sql.from('table').select(<foo bar>).limit(1)
 
 =end code
 
+=head2 offset(Int $n)
+
+Provides a C<OFFSET> clause (with the specified value as a placeholder):
+
+=begin code :lang<raku>
+
+$sql.from('table').select(<foo bar>).limit(1).offset(2)
+# sql: SELECT "foo", "bar" FROM "table" LIMIT ? OFFSET ?
+# bind: [1, 2]
+
+=end code
+
 =head2 group-by(*@columns)
 
 Provides a C<GROUP BY> clause on the specified columns:
@@ -847,6 +880,14 @@ $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('a
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
 
 =end code
+
+=head2 having($clause)
+
+Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see the documentation above.
+
+=head2 having(:and/:or @having)
+
+Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see the documentation above.
 
 =head2 order-by(*@columns)
 
