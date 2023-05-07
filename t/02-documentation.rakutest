@@ -1,0 +1,43 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'synopsis', {
+    # all SELECT queries start with from
+    my $q1 = $sql.from('users').select(<name address>).where(['email', '=', 'foo@example.com']);
+    my $statement = $q1.build;
+    given $statement {
+        is .sql, 'SELECT "name", "address" FROM "users" WHERE "email" = ?';
+        is .bind, ['foo@example.com',];
+    }
+
+    # many SQL fragments are supported:
+    my $q2 = $sql.from('songs').
+        select('album', (:albumlength(Fn.new('SUM', 'length')))).
+        where(:and, [:online(True), ['year', '>=', 2020]]).
+        group-by('album').
+        order-by('album');
+    given $q2.build {
+        is .sql, 'SELECT "album", SUM("length") AS "albumlength" FROM "songs" WHERE "online" = ? AND "year" >= ? GROUP BY "album" ORDER BY "album"';
+        is .bind, [True, 2020];
+    }
+
+    # subselects too:
+    my $q3 = $sql.from(:inner($q2)).select(Fn.new('MAX', 'inner.albumlength'));
+    given $q3.build {
+        is .sql, 'SELECT MAX("inner"."albumlength") FROM (SELECT "album", SUM("length") AS "albumlength" FROM "songs" WHERE "online" = ? AND "year" >= ? GROUP BY "album" ORDER BY "album") AS "inner"';
+        is .bind, [True, 2020];
+    }
+
+    # joins:
+    my $q4 = $sql.from('songs').
+        join(:left, 'ratings', :using('song-id')).
+        select(<title artist album rating>);
+    given $q4.build {
+        is .sql, 'SELECT "title", "artist", "album", "rating" FROM "songs" LEFT JOIN "ratings" USING ("song-id")';
+        is .bind, [];
+    }
+};
+
+done-testing;
