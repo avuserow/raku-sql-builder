@@ -21,7 +21,7 @@ $db.execute($statement.sql, |$statement.bind);
 
 # many SQL fragments are supported:
 my $q2 = $sql.from('songs').
-    select('album', (:albumlength(Fn.new('SUM', 'length')))).
+    select(['album', :albumlength(Fn.new('SUM', 'length'))]).
     where(:and, [:online(True), ['year', '>=', 2020]]).
     group-by('album').
     order-by('album');
