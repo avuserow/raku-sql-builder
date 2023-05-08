@@ -161,6 +161,31 @@ class ConditionClause does SQLSyntax {
     has Str $.mode = 'none';
     has @.clauses;
 
+    # don't inherit new
+    proto method new(|) {*}
+    multi method new(*%clauses where *.elems == 1) {
+        self.bless(:clauses(%clauses.head));
+    }
+
+    # Single clause (value)
+    multi method new($clause, *%rest where *.elems == 0) {
+        self.bless(:clauses[$clause,]);
+    }
+
+    # Single clause (list)
+    multi method new(@clause where *.elems == 1, *%rest where *.elems == 0) {
+        self.bless(:clauses(@clause));
+    }
+
+    # Multiple clauses
+    multi method new(@clauses, :$or!, *%rest where *.elems == 0) {
+        self.bless(:mode<or>, :@clauses);
+    }
+
+    multi method new(@clauses, :$and!, *%rest where *.elems == 0) {
+        self.bless(:mode<and>, :@clauses);
+    }
+
     submethod BUILD(:$mode = 'none', :$clauses) {
         $!mode = $mode;
         @!clauses = $clauses.list;
@@ -197,7 +222,7 @@ class ConditionClause does SQLSyntax {
                     my $key = $pair.key;
                     die "unknown key (expected 'and' or 'or'): $key" unless $key eq 'and'|'or';
 
-                    my $inner = ConditionClause.new(:mode($key), :clauses($pair.value)).build-fragment;
+                    my $inner = ConditionClause.new(|($key => True), $pair.value).build-fragment;
                     push @parts, '(' ~ $inner.sql ~ ')';
                     append @bind, $inner.bind;
                 }
@@ -244,9 +269,9 @@ my class Join does SQLSyntax {
         if @on {
             # XXX: should this be a Capture instead? (probably)
             if @on[0] ~~ Pair && @on[0].key eq 'and'|'or' && @on[0].value ~~ Bool  {
-                $!on = ConditionClause.new(:mode(@on[0].key), :clauses(@on[1..*]));
+                $!on = ConditionClause.new(|(@on[0].key => True), @on[1..*]);
             } else {
-                $!on = ConditionClause.new(:clauses[@on,]);
+                $!on = ConditionClause.new(@on);
             }
         }
 
@@ -311,37 +336,13 @@ class SelectBuilder does SQLSyntax {
     }
 
     method where(|c) {
-        $!where = self.clause(|c);
+        $!where = ConditionClause.new(|c);
         self;
     }
 
     method having(|c) {
-        $!having = self.clause(|c);
+        $!having = ConditionClause.new(|c);
         self;
-    }
-
-    # Single pair
-    multi method clause(*%clauses where *.elems == 1) {
-        ConditionClause.new(:clauses(%clauses.head));
-    }
-
-    # Single clause (value)
-    multi method clause($clause, *%rest where *.elems == 0) {
-        ConditionClause.new(:clauses[$clause,]);
-    }
-
-    # Single clause (list)
-    multi method clause(@clause where *.elems == 1, *%rest where *.elems == 0) {
-        ConditionClause.new(:clauses(@clause));
-    }
-
-    # Multiple clauses
-    multi method clause(@clauses, :$or!, *%rest where *.elems == 0) {
-        ConditionClause.new(:mode<or>, :@clauses);
-    }
-
-    multi method clause(@clauses, :$and!, *%rest where *.elems == 0) {
-        ConditionClause.new(:mode<and>, :@clauses);
     }
 
     # XXX: replace with either `select-all` or `select(Whatever)`?
@@ -559,32 +560,8 @@ class DeleteBuilder does SQLSyntax {
     }
 
     method where(|c) {
-        $!where = self.clause(|c);
+        $!where = ConditionClause.new(|c);
         self;
-    }
-
-    # Single pair
-    multi method clause(*%clauses where *.elems == 1) {
-        ConditionClause.new(:clauses(%clauses.head));
-    }
-
-    # Single clause (value)
-    multi method clause($clause, *%rest where *.elems == 0) {
-        ConditionClause.new(:clauses[$clause,]);
-    }
-
-    # Single clause (list)
-    multi method clause(@clause where *.elems == 1, *%rest where *.elems == 0) {
-        ConditionClause.new(:clauses(@clause));
-    }
-
-    # Multiple clauses
-    multi method clause(@clauses, :$or!, *%rest where *.elems == 0) {
-        ConditionClause.new(:mode<or>, :@clauses);
-    }
-
-    multi method clause(@clauses, :$and!, *%rest where *.elems == 0) {
-        ConditionClause.new(:mode<and>, :@clauses);
     }
 
     method build-fragment {
