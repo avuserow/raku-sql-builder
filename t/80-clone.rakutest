@@ -1,0 +1,20 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'clone', {
+    my $q = $sql.from('table').select('foo');
+    my $q2 = $q.clone.select('bar');
+
+    given $q.build {
+        is .sql, 'SELECT "foo" FROM "table"';
+    }
+
+    given $q2.build {
+        is .sql, 'SELECT "bar" FROM "table"';
+    }
+
+};
+
+done-testing;

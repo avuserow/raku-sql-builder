@@ -284,17 +284,16 @@ class SelectBuilder does SQLSyntax {
     has SQLSyntax $.offset-count;
 
     method clone {
-        nextwith (
-            select-columns => @!select-columns.clone,
-            from => $!from.clone,
-            join-items => @!join-items.clone,
-            where => $!where.clone,
-            order-columns => @!order-columns.clone,
-            group-by-columns => @!group-by-columns.clone,
-            having => $!having.clone,
-            limit-count => $!limit-count.clone,
-            offset-count => $!offset-count.clone,
-            |%_);
+        nextwith :select-columns(@!select-columns.clone),
+            :from($!from.clone),
+            :join(@!join-items.clone),
+            :where($!where.clone),
+            :order-columns(@!order-columns),
+            :group-by-columns(@!group-by-columns.clone),
+            :having($!having.clone),
+            |(:limit-count(.clone) with $!limit-count),
+            |(:offset-count(.clone) with $!offset-count),
+            |%_;
     }
 
     method where(|c) {
@@ -581,8 +580,8 @@ my $sql = SQL::Builder.new;
 # all SELECT queries start with from
 my $q1 = $sql.from('users').select(<name address>).where(['email', '=', 'foo@example.com']);
 my $statement = $q1.build;
-$db.execute($statement.sql, |$statement.bind);
-# SELECT name, address FROM users WHERE email = ?
+# $statement.sql: SELECT name, address FROM users WHERE email = ?
+# $db.execute($statement.sql, |$statement.bind);
 
 # many SQL fragments are supported:
 my $q2 = $sql.from('songs').
@@ -668,15 +667,15 @@ Examples:
 
 =begin code :lang<raku>
 
-Raw.fmt("COUNT({}) AS {}", Identifier.new("artist"), Identifier.new("artistcount"))
+Raw.fmt('COUNT({}) AS {}', Identifier.new("artist"), Identifier.new("artistcount"));
 # sql: COUNT("artist") AS "artistcount"
 # bind: []
 
-Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new(@ids))
+Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new([1, 2, 3]));
 # sql: unnest(?::uuid[]) WITH ORDINALITY t(id, ord)
 # bind: [@ids,]
 
-Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'))
+Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'));
 # sql: date_trunc('day', "song-start")
 # bind: []
 
@@ -690,11 +689,11 @@ Examples:
 
 =begin code :lang<raku>
 
-Fn.new('COUNT', 'artists')
+Fn.new('COUNT', 'artists');
 # sql: COUNT("artists")
 # bind: []
 
-Fn.new('ANY', @my-stuff)
+Fn.new('ANY', my @stuff);
 # sql: ANY(?)
 # bind: [@my-stuff,]
 
@@ -750,16 +749,16 @@ Pairs:
 
 =begin code :lang<raku>
 
-$sql.from('table').select(<foo bar>, :a<b>, :c<d>)
+$sql.from('table').select(<foo bar>, :a<b>, :c<d>);
 # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
 
-$sql.from('table').select(:a<b>, <foo bar>, :c<d>)
+$sql.from('table').select(:a<b>, <foo bar>, :c<d>);
 # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
 
 # Instead, pass all values as positional elements, in any of the following ways:
-$sql.from('table').select([:a<b>, "foo", "bar", :c<d>])
-$sql.from('table').select([:a<b>, <foo bar>.flat, :c<d>])
-$sql.from('table').select((:a<b>), "foo", "bar", (:c<d>))
+$sql.from('table').select([:a<b>, "foo", "bar", :c<d>]);
+$sql.from('table').select([:a<b>, <foo bar>.flat, :c<d>]);
+$sql.from('table').select((:a<b>), "foo", "bar", (:c<d>));
 # SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
 
 =end code
@@ -770,11 +769,11 @@ Provide a C<WHERE> clause with a single value:
 
 =begin code :lang<raku>
 
-$sql.from('users').select('email').where(:username<ak>)
+$sql.from('users').select('email').where(:username<ak>);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
 
-$sql.from('users').select('email').where(["username", "=", "ak"])
+$sql.from('users').select('email').where(["username", "=", "ak"]);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
 
@@ -791,7 +790,7 @@ below for the details.
 
 =begin code :lang<raku>
 
-$sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]])
+$sql.from('users').select('email').where(:or, [["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]);
 # sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
 # bind: ["%gmail.com", "%googlemail.com"]
 
@@ -800,9 +799,9 @@ $sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["ema
 Note that the C<@where> clause must be a singular C<List> when passing multiple clauses. The above
 example cannot be written as:
 
-=begin code :lang<raku>
+=begin code :lang<raku> :dies-ok
 
-$sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"])
+$sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]);
 # ERROR ERROR ERROR
 
 =end code
@@ -852,7 +851,7 @@ Provides a C<LIMIT> clause (with the specified value as a placeholder):
 
 =begin code :lang<raku>
 
-$sql.from('table').select(<foo bar>).limit(1)
+$sql.from('table').select(<foo bar>).limit(1);
 # sql: SELECT "foo", "bar" FROM "table" LIMIT ?
 # bind: 1
 
@@ -864,7 +863,7 @@ Provides a C<OFFSET> clause (with the specified value as a placeholder):
 
 =begin code :lang<raku>
 
-$sql.from('table').select(<foo bar>).limit(1).offset(2)
+$sql.from('table').select(<foo bar>).limit(1).offset(2);
 # sql: SELECT "foo", "bar" FROM "table" LIMIT ? OFFSET ?
 # bind: [1, 2]
 
@@ -876,7 +875,7 @@ Provides a C<GROUP BY> clause on the specified columns:
 
 =begin code :lang<raku>
 
-$sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year')
+$sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year');
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
 
 =end code
@@ -896,17 +895,17 @@ Provides an C<ORDER BY> clause on the specified columns:
 =begin code :lang<raku>
 
 # pick 10 shortest shortest songs
-$sql.from('songs').select('title').order-by('length').limit(10)
+$sql.from('songs').select('title').order-by('length').limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
 # bind: 10
 
 # pick 10 longest songs
-$sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10)
+$sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
 # bind: 10
 
 # pick 10 random items
-$sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10)
+$sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
 # bind: 10
 
@@ -920,7 +919,9 @@ appear in the same order across invocations.
 
 =head2 clone()
 
-Returns a new C<SelectBuilder> in the same state. Useful if you want to have a common set of options, and then use many times:
+Returns a new C<SelectBuilder> in the same state. Useful if you want to have a common set of
+options, and then use many times. (Note that if you do not clone, then the original builder would be
+modified, which may not be what you want.)
 
 =begin code :lang<raku>
 
@@ -930,7 +931,9 @@ sub getuser {
 }
 
 # multiple times later:
-$db.query(.sql, |.bind) given getuser().where(:$username).build;
+my $username = "whoever";
+my $st2 = getuser().where(:$username).build;
+# $db.query($st2.sql, |$st2.bind);
 
 =end code
 
@@ -947,7 +950,7 @@ The main item is a list of exactly three items, typically a column (C<Identifier
 
 =begin code :lang<raku>
 
-$q.where(["a", "=", 1])
+$q.where(["a", "=", 1]);
 # sql: ... WHERE a = ?
 # bind: [1,]
 
@@ -957,10 +960,10 @@ Any of these three can be replaced by an explicit type from the "Type System" se
 
 =begin code :lang<raku>
 
-$q.where([Fn.new("lower", "a"), "=", Fn.new("lower", "b")])
+$q.where([Fn.new("lower", "a"), "=", Fn.new("lower", "b")]);
 # sql: ... WHERE lower("a") = lower("b")
 
-$q.where(["b", ">=", Raw.fmt("{} / 2.0", Placeholder.new(3))])
+$q.where(["b", ">=", Raw.fmt('{} / 2.0', Placeholder.new(3))]);
 # sql: ... WHERE "b" >= ? / 2.0
 # bind: [3,]
 
@@ -972,11 +975,12 @@ As a convenience, a Pair is used for equality.
 
 =begin code :lang<raku>
 
-$q.where([:a(1)])
+$q.where([:a(1)]);
 # sql: ... WHERE "a" = ?
 # bind: [1,]
 
-$q.where([:$a])
+my $a = 1;
+$q.where([:$a]);
 # sql: ... WHERE "a" = ?
 # bind: [$a,]
 
@@ -987,7 +991,7 @@ with this special treatment:
 
 =begin code :lang<raku>
 
-$q.where([:a(Nil)])
+$q.where([:a(Nil)]);
 # sql: ... WHERE "a" IS NULL
 
 =end code
@@ -1002,7 +1006,7 @@ value is another list that creates another C<ConditionClause>.
 
 $q.where(:and, [:a<b>, \(:or[
     :c<d>, :e<f>
-])])
+])]);
 # sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
 # bind: ["b", "d", "f"]
 
@@ -1017,17 +1021,17 @@ If you pass multiple items in a clause, you must choose whether to use C<AND> lo
 
 =begin code :lang<raku>
 
-$q.where([["a", "=", 1], :b(2)])
+$q.where([["a", "=", 1], :b(2)]);
 # ERROR: don't know whether to use AND or OR
 
-$q.where(:and, [["a", "=", 1], :b(2)])
+$q.where(:and, [["a", "=", 1], :b(2)]);
 # sql: a = ? AND b = ?
 
-$q.where(:or, [["a", "=", 1], :b(2)])
+$q.where(:or, [["a", "=", 1], :b(2)]);
 # sql: a = ? OR b = ?
 
 # same applies for JOIN ... ON:
-$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]))
+$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]));
 # sql: ... JOIN "table" ON a = ? OR b = ?
 
 =end code
@@ -1039,14 +1043,14 @@ If you pass a single item, you can avoid the outer list in the C<where> method, 
 =begin code :lang<raku>
 
 # these are the same:
-$q.where(["a", "=", 1])
-$q.where([["a", "=", 1]])
-$q.where([["a", "=", 1],])
+$q.where(["a", "=", 1]);
+$q.where([["a", "=", 1]]);
+$q.where([["a", "=", 1],]);
 
 # also the same:
-$q.where(:a(1))
-$q.where([:a(1)])
-$q.where((:a(1)))
+$q.where(:a(1));
+$q.where([:a(1)]);
+$q.where((:a(1)));
 
 =end code
 

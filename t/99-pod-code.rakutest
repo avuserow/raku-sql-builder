@@ -1,0 +1,12 @@
+use SQL::Builder;
+use Test;
+
+if %*ENV<AUTHOR_TESTING> {
+    require Pod::Test::Code <&test-code-snippets>;
+
+    test-code-snippets("SQL::Builder");
+} else {
+    plan 1;
+    skip-rest "Skipping author test";
+    exit;
+}
