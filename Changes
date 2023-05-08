@@ -2,5 +2,9 @@ Revision history for SQL-Builder
 
 {{$NEXT}}
 
+0.0.2  2023-05-07T22:20:55-05:00
+    - Fix clone method
+    - Update documentation and add more tests
+
 0.0.1  2023-05-06T19:39:47-05:00
     - Initial version
