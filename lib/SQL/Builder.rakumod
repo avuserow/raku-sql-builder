@@ -143,6 +143,20 @@ class Fn does SQLSyntax is export {
     }
 }
 
+# aliased-column-list handles the Pair syntax used in the SELECT and RETURNING clauses to allow
+# creation of column aliases.
+sub aliased-column-list(@columns) {
+    # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
+    return @columns.map({
+        when Pair {
+            Raw.fmt('{} AS {}', fragment(Identifier, .value), fragment(Identifier, .key));
+        }
+        default {
+            $_;
+        }
+    });
+}
+
 class ConditionClause does SQLSyntax {
     has Str $.mode = 'none';
     has @.clauses;
@@ -389,16 +403,7 @@ class SelectBuilder does SQLSyntax {
         my @bind;
         my $sql = 'SELECT ';
 
-        # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
-        my @cols = @!select-columns.map({
-            when Pair {
-                Raw.fmt('{} AS {}', fragment(Identifier, .value), fragment(Identifier, .key));
-            }
-            default {
-                $_;
-            }
-        });
-        append-fragments($sql, @bind, Identifier, @cols, :join(', '));
+        append-fragments($sql, @bind, Identifier, aliased-column-list(@!select-columns), :join(', '));
 
         with $!from.?build-fragment {
             $sql ~= ' FROM ' ~ .sql;
@@ -542,22 +547,86 @@ multi method from(Identifier $table) {
 # multi method insert-into(Identifier $table) {
 #     return InsertBuilder.new(:$table);
 # }
-# 
-# class DeleteBuilder does SQLSyntax {
-#     has SQLSyntax $.from;
-#     has ... @.values;
-#     has ... $.returning;
-#     has ConditionClause $.where;
-# }
-# 
-# 
-# multi method delete-from(Str $table) {
-#     return DeleteBuilder.new(:table(Identifier.new($table)));
-# }
-# 
-# multi method delete-from(Identifier $table) {
-#     return DeleteBuilder.new(:$table);
-# }
+
+class DeleteBuilder does SQLSyntax {
+    has SQLSyntax $.table;
+    has @.returning;
+    has ConditionClause $.where;
+
+    multi method returning(*@columns, *%pairs) {
+        @!returning = |@columns, |%pairs.pairs.sort;
+        self;
+    }
+
+    method where(|c) {
+        $!where = self.clause(|c);
+        self;
+    }
+
+    # Single pair
+    multi method clause(*%clauses where *.elems == 1) {
+        ConditionClause.new(:clauses(%clauses.head));
+    }
+
+    # Single clause (value)
+    multi method clause($clause, *%rest where *.elems == 0) {
+        ConditionClause.new(:clauses[$clause,]);
+    }
+
+    # Single clause (list)
+    multi method clause(@clause where *.elems == 1, *%rest where *.elems == 0) {
+        ConditionClause.new(:clauses(@clause));
+    }
+
+    # Multiple clauses
+    multi method clause(@clauses, :$or!, *%rest where *.elems == 0) {
+        ConditionClause.new(:mode<or>, :@clauses);
+    }
+
+    multi method clause(@clauses, :$and!, *%rest where *.elems == 0) {
+        ConditionClause.new(:mode<and>, :@clauses);
+    }
+
+    method build-fragment {
+        my $fragment = self.build;
+        SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
+    }
+
+    method build {
+        die "refusing to DELETE without a WHERE clause" unless $!where;
+
+        my @bind;
+        my $sql = 'DELETE FROM ';
+
+        with $!table.?build-fragment {
+            $sql ~= .sql;
+            append @bind, .bind;
+        }
+
+        if $!where {
+            with $!where.?build-fragment {
+                $sql ~= ' WHERE ' ~ .sql;
+                append @bind, .bind;
+            }
+        }
+
+        if @!returning {
+            $sql ~= ' RETURNING ';
+            append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
+        }
+
+        return SQLFragment.new(:$sql, :@bind);
+    }
+}
+
+
+multi method delete-from(Str $table) {
+    return DeleteBuilder.new(:table(Identifier.new($table)));
+}
+
+multi method delete-from(Identifier $table) {
+    return DeleteBuilder.new(:$table);
+}
 
 method fn {
     return Fn;

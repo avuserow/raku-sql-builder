@@ -1,0 +1,22 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'delete', {
+    dies-ok {
+        $sql.delete-from('table').build;
+    }, 'cannot delete without a where clause';
+
+    given $sql.delete-from('table').where(:a(1)).build {
+        is .sql, 'DELETE FROM "table" WHERE "a" = ?';
+        is .bind, [1,];
+    }
+
+    given $sql.delete-from('table').where(:a(1)).returning('a').build {
+        is .sql, 'DELETE FROM "table" WHERE "a" = ? RETURNING "a"';
+        is .bind, [1,];
+    }
+};
+
+done-testing;
