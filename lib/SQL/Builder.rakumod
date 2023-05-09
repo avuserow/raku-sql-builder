@@ -554,6 +554,15 @@ class DeleteBuilder does SQLSyntax {
     has @.returning;
     has ConditionClause $.where;
 
+    proto method new(|) {*}
+    multi method new(Str $table) {
+        return self.bless(:table(Identifier.new($table)));
+    }
+
+    multi method new(Identifier $table) {
+        return self.bless(:$table);
+    }
+
     multi method returning(*@columns, *%pairs) {
         @!returning = |@columns, |%pairs.pairs.sort;
         self;
@@ -597,12 +606,8 @@ class DeleteBuilder does SQLSyntax {
 }
 
 
-multi method delete-from(Str $table) {
-    return DeleteBuilder.new(:table(Identifier.new($table)));
-}
-
-multi method delete-from(Identifier $table) {
-    return DeleteBuilder.new(:$table);
+method delete-from(|c) {
+    DeleteBuilder.new(|c);
 }
 
 method fn {
