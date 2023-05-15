@@ -623,7 +623,6 @@ SQL::Builder - build SQL statements
 =head1 SYNOPSIS
 
 =begin code :lang<raku>
-
 use SQL::Builder;
 
 my $sql = SQL::Builder.new;
@@ -648,7 +647,6 @@ my $q3 = $sql.from(:inner($q2)).select(Fn.new('MAX', 'inner.albumlength'));
 my $q4 = $sql.from('songs').
     join(:left, 'ratings', :using('song-id')).
     select(<title artist album rating>);
-
 =end code
 
 =head1 DESCRIPTION
@@ -717,7 +715,6 @@ The C<fmt> method lets you safely build bits of SQL by providing a template cont
 Examples:
 
 =begin code :lang<raku>
-
 Raw.fmt('COUNT({}) AS {}', Identifier.new("artist"), Identifier.new("artistcount"));
 # sql: COUNT("artist") AS "artistcount"
 # bind: []
@@ -729,7 +726,6 @@ Raw.fmt('unnest({}::uuid[]) WITH ORDINALITY t(id, ord)', Placeholder.new([1, 2, 
 Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'));
 # sql: date_trunc('day', "song-start")
 # bind: []
-
 =end code
 
 =head2 Fn
@@ -739,7 +735,6 @@ Fn (function) is a helper to make function calls. The first item is taken as a R
 Examples:
 
 =begin code :lang<raku>
-
 Fn.new('COUNT', 'artists');
 # sql: COUNT("artists")
 # bind: []
@@ -747,7 +742,6 @@ Fn.new('COUNT', 'artists');
 Fn.new('ANY', my @stuff);
 # sql: ANY(?)
 # bind: [@my-stuff,]
-
 =end code
 
 =head1 SELECT QUERIES
@@ -770,11 +764,9 @@ Creates a C<SelectBuilder> from the given table.
 Creates a subselect from the provided SelectBuilder, aliased to the provided Str. Contrived example:
 
 =begin code :lang<raku>
-
 my $inner-q = $sql.from('foo').select('bar');
 my $q = $sql.from(:inner($inner-q)).select('bar');
 # SELECT "bar" FROM (SELECT "bar" FROM "foo") AS "inner"
-
 =end code
 
 =head2 select(:all)
@@ -788,10 +780,8 @@ Specifies the list of values to return. Each column defaults to C<Identifier>.
 If a C<Pair> is provided, then this is treated as a column alias:
 
 =begin code :lang<raku>
-
 $sql.from('table').select(:foo<bar>);
 # sql: SELECT "bar" AS "foo" FROM "table"
-
 =end code
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the
@@ -799,7 +789,6 @@ Pairs will always be at the end. You can avoid this by passing an Array, or pare
 Pairs:
 
 =begin code :lang<raku>
-
 $sql.from('table').select(<foo bar>, :a<b>, :c<d>);
 # SELECT "foo", "bar", "b" AS "a", "d" AS "c" FROM table
 
@@ -811,7 +800,6 @@ $sql.from('table').select([:a<b>, "foo", "bar", :c<d>]);
 $sql.from('table').select([:a<b>, <foo bar>.flat, :c<d>]);
 $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>));
 # SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
-
 =end code
 
 =head2 where($clause)
@@ -819,7 +807,6 @@ $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>));
 Provide a C<WHERE> clause with a single value:
 
 =begin code :lang<raku>
-
 $sql.from('users').select('email').where(:username<ak>);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
@@ -827,7 +814,6 @@ $sql.from('users').select('email').where(:username<ak>);
 $sql.from('users').select('email').where(["username", "=", "ak"]);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
-
 =end code
 
 The parameter is used as a single-item C<ConditionClause>. See the C<ConditionClause> documentation
@@ -840,11 +826,9 @@ how the list of values is joined. The values are used as a C<ConditionClause>, s
 below for the details.
 
 =begin code :lang<raku>
-
 $sql.from('users').select('email').where(:or, [["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]);
 # sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
 # bind: ["%gmail.com", "%googlemail.com"]
-
 =end code
 
 Note that the C<@where> clause must be a singular C<List> when passing multiple clauses. The above
@@ -854,7 +838,6 @@ example cannot be written as:
 
 $sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]);
 # ERROR ERROR ERROR
-
 =end code
 
 =head2 join($table, :@on, :$using, Str :$as, :$inner/:$left/:$right/:$full)
@@ -880,7 +863,6 @@ There is currently no way to clear the list of JOINs from a query.
 Examples:
 
 =begin code :lang<raku>
-
 $sql.from('t1').join('t2', :using<id>).select(<t1.foo t2.bar>);
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" USING("id")
 
@@ -901,11 +883,9 @@ $sql.from('t1').
 Provides a C<LIMIT> clause (with the specified value as a placeholder):
 
 =begin code :lang<raku>
-
 $sql.from('table').select(<foo bar>).limit(1);
 # sql: SELECT "foo", "bar" FROM "table" LIMIT ?
 # bind: 1
-
 =end code
 
 =head2 offset(Int $n)
@@ -913,11 +893,9 @@ $sql.from('table').select(<foo bar>).limit(1);
 Provides a C<OFFSET> clause (with the specified value as a placeholder):
 
 =begin code :lang<raku>
-
 $sql.from('table').select(<foo bar>).limit(1).offset(2);
 # sql: SELECT "foo", "bar" FROM "table" LIMIT ? OFFSET ?
 # bind: [1, 2]
-
 =end code
 
 =head2 group-by(*@columns)
@@ -925,10 +903,8 @@ $sql.from('table').select(<foo bar>).limit(1).offset(2);
 Provides a C<GROUP BY> clause on the specified columns:
 
 =begin code :lang<raku>
-
 $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('artist', 'year');
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
-
 =end code
 
 =head2 having($clause)
@@ -944,7 +920,6 @@ Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see
 Provides an C<ORDER BY> clause on the specified columns:
 
 =begin code :lang<raku>
-
 # pick 10 shortest shortest songs
 $sql.from('songs').select('title').order-by('length').limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
@@ -959,7 +934,6 @@ $sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('l
 $sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
 # bind: 10
-
 =end code
 
 =head2 build()
@@ -975,7 +949,6 @@ options, and then use many times. (Note that if you do not clone, then the origi
 modified, which may not be what you want.)
 
 =begin code :lang<raku>
-
 sub getuser {
     state $q = $sql.from('users').select(<username email address>);
     $q.clone;
@@ -985,7 +958,39 @@ sub getuser {
 my $username = "whoever";
 my $st2 = getuser().where(:$username).build;
 # $db.query($st2.sql, |$st2.bind);
+=end code
 
+=head1 DELETE QUERIES
+
+Delete queries are created with the C<delete-from> method on the C<SQL::Builder> object. All other
+options can be passed in any order. All options overwrite the current value. Each option returns the
+DeleteBuilder instance, allowing for a chain style:
+
+=begin code :lang<raku>
+$sql.delete-from("table").where(["a", "=", 1])
+# DELETE FROM "table" WHERE "a" = ?
+=end code
+
+=head2 new(Str $table)
+
+Creates a C<DeleteBuilder> for the given table.
+
+=head2 where($where) / where(@where)
+
+Provides a C<WHERE> clause with one or more values. This works identically to C<where> for Select
+queries, and is used to make a ConditionClause. See documentation for C<where> above, and on
+C<ConditionClause> below.
+
+Unlike Select queries, this is required, even if you want to delete all rows in a table.
+
+=head2 returning(@columns)
+
+Provides a C<RETURNING> clause, with list of columns (or other expressions) to return. This works
+identically to the C<select> clause of a Select query, see that documentation above.
+
+=begin code :lang<raku>
+$sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c"))
+# DELETE FROM "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 =end code
 
 =head1 ConditionClause
@@ -1000,24 +1005,20 @@ At its core, this syntax is a list of items. Each item can be one of three value
 The main item is a list of exactly three items, typically a column (C<Identifier>), an operator (C<Raw>), and a C<Placeholder> value.
 
 =begin code :lang<raku>
-
 $q.where(["a", "=", 1]);
 # sql: ... WHERE a = ?
 # bind: [1,]
-
 =end code
 
 Any of these three can be replaced by an explicit type from the "Type System" section above:
 
 =begin code :lang<raku>
-
 $q.where([Fn.new("lower", "a"), "=", Fn.new("lower", "b")]);
 # sql: ... WHERE lower("a") = lower("b")
 
 $q.where(["b", ">=", Raw.fmt('{} / 2.0', Placeholder.new(3))]);
 # sql: ... WHERE "b" >= ? / 2.0
 # bind: [3,]
-
 =end code
 
 =head2 Pair
@@ -1025,7 +1026,6 @@ $q.where(["b", ">=", Raw.fmt('{} / 2.0', Placeholder.new(3))]);
 As a convenience, a Pair is used for equality.
 
 =begin code :lang<raku>
-
 $q.where([:a(1)]);
 # sql: ... WHERE "a" = ?
 # bind: [1,]
@@ -1034,17 +1034,14 @@ my $a = 1;
 $q.where([:$a]);
 # sql: ... WHERE "a" = ?
 # bind: [$a,]
-
 =end code
 
 If the value is exactly C<Nil>, then C<IS NULL> is used instead. C<Nil> is the only undefined value
 with this special treatment:
 
 =begin code :lang<raku>
-
 $q.where([:a(Nil)]);
 # sql: ... WHERE "a" IS NULL
-
 =end code
 
 =head2 Sub-group (Capture)
@@ -1054,13 +1051,11 @@ must contain a single Pair, with the key of C<and> or C<or>, depending on which 
 value is another list that creates another C<ConditionClause>.
 
 =begin code :lang<raku>
-
 $q.where(:and, [:a<b>, \(:or[
     :c<d>, :e<f>
 ])]);
 # sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
 # bind: ["b", "d", "f"]
-
 =end code
 
 This syntax is chosen to avoid difficulties with flattening of lists in Raku. It also avoids some
@@ -1071,7 +1066,6 @@ confusion between Pairs and single-item Hashes.
 If you pass multiple items in a clause, you must choose whether to use C<AND> logic or C<OR> logic:
 
 =begin code :lang<raku>
-
 $q.where([["a", "=", 1], :b(2)]);
 # ERROR: don't know whether to use AND or OR
 
@@ -1084,7 +1078,6 @@ $q.where(:or, [["a", "=", 1], :b(2)]);
 # same applies for JOIN ... ON:
 $q.join("table", :on(:or, ["a", "=", 1], [:b(2)]));
 # sql: ... JOIN "table" ON a = ? OR b = ?
-
 =end code
 
 Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
@@ -1092,7 +1085,6 @@ Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
 If you pass a single item, you can avoid the outer list in the C<where> method, as well as avoiding a meaningless C<:and/:or>:
 
 =begin code :lang<raku>
-
 # these are the same:
 $q.where(["a", "=", 1]);
 $q.where([["a", "=", 1]]);
@@ -1102,7 +1094,6 @@ $q.where([["a", "=", 1],]);
 $q.where(:a(1));
 $q.where([:a(1)]);
 $q.where((:a(1)));
-
 =end code
 
 =head1 COMPATIBILITY
