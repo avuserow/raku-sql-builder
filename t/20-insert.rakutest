@@ -1,0 +1,31 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'basic insert', {
+    given $sql.insert-into('table').values(:a(1)).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
+        is .bind, [1];
+    }
+
+    given $sql.insert-into('table').values([:a(1)]).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
+        is .bind, [1];
+    }
+
+    given $sql.insert-into('table').values([:a(1), :b(2)]).build {
+        is .sql, 'INSERT INTO "table" ("a", "b") VALUES (?, ?)';
+        is .bind, [1, 2];
+    }
+};
+
+subtest 'insert from select', {
+    my $select = $sql.from('t1').select(<a b>).where(["a", ">", 1]);
+    given $sql.insert-into('t2').columns(<a b>).query($select).build {
+        is .sql, 'INSERT INTO "t2" ("a", "b") SELECT "a", "b" FROM "t1" WHERE "a" > ?';
+        is .bind, [1,];
+    }
+};
+
+done-testing;

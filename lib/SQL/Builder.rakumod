@@ -19,6 +19,10 @@ my role SQLSyntax {
     method build-fragment(--> SQLFragment) {...}
 }
 
+my role SQLStatement {
+    method build(--> SQLFragment) {...}
+}
+
 my sub fragment(SQLSyntax:U $default-class, $value) {
     $value.does(SQLSyntax) ?? $value !! $default-class.new($value);
 }
@@ -311,7 +315,7 @@ my class Join does SQLSyntax {
     }
 }
 
-class SelectBuilder does SQLSyntax {
+class SelectBuilder does SQLSyntax does SQLStatement {
     has @.select-columns;
     has SQLSyntax $.from;
     has Join @.join-items;
@@ -536,23 +540,97 @@ method from(|c) {
 # multi method update(Identifier $table) {
 #     return UpdateBuilder.new(:$table);
 # }
-# 
-# class InsertBuilder does SQLSyntax {
-#     has SQLSyntax $.from;
-#     has ... @.values;
-#     has ... $.returning;
-#     has ... $.on-conflict;
-# }
-# 
-# multi method insert-into(Str $table) {
-#     return InsertBuilder.new(:table(Identifier.new($table)));
-# }
-# 
-# multi method insert-into(Identifier $table) {
-#     return InsertBuilder.new(:$table);
-# }
 
-class DeleteBuilder does SQLSyntax {
+class InsertBuilder does SQLSyntax does SQLStatement {
+    has SQLSyntax $.table;
+    has @!values;
+    has @!columns;
+    has $!query;
+    has @!returning;
+    # has ... $.on-conflict;
+
+    proto method new(|) {*}
+    multi method new(Str $table) {
+        return self.bless(:table(Identifier.new($table)));
+    }
+
+    multi method new(Identifier $table) {
+        return self.bless(:$table);
+    }
+
+    method returning(*@columns, *%pairs) {
+        @!returning = |@columns, |%pairs.pairs.sort;
+        self;
+    }
+
+    method values(*@values, *%values) {
+        # XXX: maybe rename to `data`, and repurpose this method for
+        # multi-values support (in combination with `columns`?)
+        @!values = @values;
+        append @!values, %values.sort;
+        self;
+    }
+
+    method columns(*@columns) {
+        @!columns = @columns;
+        @!values = ();
+        self;
+    }
+
+    method query(SQLStatement $query) {
+        # XXX: should we validate that this query is either a SELECT statement,
+        # or has a RETURNING clause somehow?
+        $!query = $query;
+        self;
+    }
+
+    method build-fragment {
+        my $fragment = self.build;
+        SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
+    }
+
+    method build {
+        my @bind;
+        my $sql = 'INSERT INTO ';
+
+        given $!table.build-fragment {
+            $sql ~= .sql;
+            append @bind, .bind;
+        }
+
+        if @!values {
+            $sql ~= ' (';
+            append-fragments($sql, @bind, Identifier, @!values.map(*.key), :join(', '));
+            $sql ~= ') VALUES (';
+            append-fragments($sql, @bind, Placeholder, @!values.map(*.value), :join(', '));
+            $sql ~= ')';
+        } elsif @!columns && $!query {
+            $sql ~= ' (';
+            append-fragments($sql, @bind, Identifier, @!columns, :join(', '));
+            $sql ~= ') ';
+
+            given $!query.build {
+                $sql ~= .sql;
+                append @bind, .bind;
+            }
+        } else {
+            die "cannot INSERT without values (or a query)";
+        }
+
+        if @!returning {
+            $sql ~= ' RETURNING ';
+            append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
+        }
+
+        return SQLFragment.new(:$sql, :@bind);
+    }
+}
+
+method insert-into(|c) {
+    InsertBuilder.new(|c);
+}
+
+class DeleteBuilder does SQLSyntax does SQLStatement {
     has SQLSyntax $.table;
     has @.returning;
     has ConditionClause $.where;
