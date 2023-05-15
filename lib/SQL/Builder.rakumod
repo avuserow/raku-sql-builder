@@ -322,6 +322,26 @@ class SelectBuilder does SQLSyntax {
     has SQLSyntax $.limit-count;
     has SQLSyntax $.offset-count;
 
+    proto method new(|) {*}
+
+    # Multiple FROM sources NYI
+    multi method new(*%pairs where *.elems == 1) {
+        my $pair = %pairs.head;
+        my $alias = $pair.key;
+        my $select = $pair.value.build;
+
+        my $from = Raw.new("({$select.sql}) AS {quote-column($alias)}", :bind($select.bind));
+        return self.bless(:$from);
+    }
+
+    multi method new(Str $table) {
+        return self.bless(:from(Identifier.new($table)));
+    }
+
+    multi method new(Identifier $table) {
+        return self.bless(:from($table));
+    }
+
     method clone {
         nextwith :select-columns(@!select-columns.clone),
             :from($!from.clone),
@@ -352,7 +372,7 @@ class SelectBuilder does SQLSyntax {
     }
 
     multi method select(*@columns, *%pairs) {
-        @!select-columns = |@columns, |%pairs.pairs.sort;
+        @!select-columns = |@columns, |%pairs.sort;
         self;
     }
 
@@ -497,25 +517,8 @@ class SelectBuilder does SQLSyntax {
 #     }
 # }
 
-has &.select-builder = -> |c {SelectBuilder.new(|c)};
-
-# Multiple FROM sources NYI
-multi method from(*%pairs where *.elems == 1) {
-    my $pair = %pairs.head;
-    my $alias = $pair.key;
-    my $select = $pair.value.build;
-
-    # XXX: can we teach SelectBuilder about this syntax instead
-    my $from = Raw.new("({$select.sql}) AS {quote-column($alias)}", :bind($select.bind));
-    return self.select-builder.(:$from);
-}
-
-multi method from(Str $table) {
-    return self.select-builder.(:from(Identifier.new($table)));
-}
-
-multi method from(Identifier $table) {
-    return self.select-builder.(:from($table));
+method from(|c) {
+    SelectBuilder.new(|c);
 }
 
 # TODO: implement these
@@ -563,7 +566,7 @@ class DeleteBuilder does SQLSyntax {
         return self.bless(:$table);
     }
 
-    multi method returning(*@columns, *%pairs) {
+    method returning(*@columns, *%pairs) {
         @!returning = |@columns, |%pairs.pairs.sort;
         self;
     }
@@ -612,6 +615,14 @@ method delete-from(|c) {
 
 method fn {
     return Fn;
+}
+
+method raw {
+    return Raw;
+}
+
+method placeholder {
+    return Placeholder;
 }
 
 =begin pod
