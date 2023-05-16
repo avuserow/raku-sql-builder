@@ -430,7 +430,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
         append-fragments($sql, @bind, Identifier, aliased-column-list(@!select-columns), :join(', '));
 
-        with $!from.?build-fragment {
+        given $!from.build-fragment {
             $sql ~= ' FROM ' ~ .sql;
             append @bind, .bind;
         }
@@ -441,7 +441,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         }
 
         if $!where {
-            with $!where.?build-fragment {
+            given $!where.build-fragment {
                 $sql ~= ' WHERE ' ~ .sql;
                 append @bind, .bind;
             }
@@ -453,7 +453,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         }
 
         if $!having {
-            with $!having.?build-fragment {
+            given $!having.build-fragment {
                 $sql ~= ' HAVING ' ~ .sql;
                 append @bind, .bind;
             }
@@ -465,7 +465,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         }
 
         if $!limit-count {
-            with $!limit-count.?build-fragment {
+            given $!limit-count.build-fragment {
                 $sql ~= ' LIMIT ' ~ .sql;
                 append @bind, .bind;
             }
@@ -665,16 +665,14 @@ class DeleteBuilder does SQLSyntax does SQLStatement {
         my @bind;
         my $sql = 'DELETE FROM ';
 
-        with $!table.?build-fragment {
+        given $!table.build-fragment {
             $sql ~= .sql;
             append @bind, .bind;
         }
 
-        if $!where {
-            with $!where.?build-fragment {
-                $sql ~= ' WHERE ' ~ .sql;
-                append @bind, .bind;
-            }
+        given $!where.build-fragment {
+            $sql ~= ' WHERE ' ~ .sql;
+            append @bind, .bind;
         }
 
         if @!returning {
@@ -758,7 +756,9 @@ or sub-selects).
 
 =head1 TYPE SYSTEM
 
-SQL::Builder has a basic type system to ensure the right behavior when a value is provided. Each builder option has a default way to handle a string, typically either as either Identifier or Placeholder and each method documents its expectations.
+SQL::Builder has a basic type system to ensure the right behavior when a value is provided. Each
+builder option has a default way to handle a string, typically either as either Identifier or
+Placeholder and each method documents its expectations.
 
 These are all subclasses of C<SQLSyntax> and are:
 
@@ -774,7 +774,10 @@ These are all subclasses of C<SQLSyntax> and are:
 
 =head2 Identifier
 
-The C<Identifier> type is the most common way to handle untyped input. It is used to represent tables and columns, with an optional type cast. If a dotted value is specified (e.g. C<table.column>), then this is split into two bits before quoting. Additionally, if it ends with C<::>, then that suffix is allowed as a PostgreSQL-style type cast.
+The C<Identifier> type is the most common way to handle untyped input. It is used to represent
+tables and columns, with an optional type cast. If a dotted value is specified (e.g.
+C<table.column>), then this is split into two bits before quoting. Additionally, if it ends with
+C<::>, then that suffix is allowed as a PostgreSQL-style type cast.
 
 Example input and output for the SQL portion:
 
@@ -799,7 +802,10 @@ No escaping is performed. The C<Raw.fmt> method provides a safer way to use this
 
 =head2 Raw.fmt(Str $template, SQLSyntax $a, $b, ...)
 
-The C<fmt> method lets you safely build bits of SQL by providing a template containing C<{}> sequences that are replaced by the following arguments. You must have the same number of C<{}> replacements as arguments, and all arguments must be one of the types in this section (e.g. subclasses of C<SQLSyntax>).
+The C<fmt> method lets you safely build bits of SQL by providing a template containing C<{}>
+sequences that are replaced by the following arguments. You must have the same number of C<{}>
+replacements as arguments, and all arguments must be one of the types in this section (e.g.
+subclasses of C<SQLSyntax>).
 
 Examples:
 
@@ -819,7 +825,8 @@ Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'));
 
 =head2 Fn
 
-Fn (function) is a helper to make function calls. The first item is taken as a Raw value, and all following items default to Identifiers.
+Fn (function) is a helper to make function calls. The first item is taken as a Raw value, and all
+following items default to Identifiers.
 
 Examples:
 
@@ -1047,6 +1054,67 @@ sub getuser {
 my $username = "whoever";
 my $st2 = getuser().where(:$username).build;
 # $db.query($st2.sql, |$st2.bind);
+=end code
+
+=head1 INSERT QUERIES
+
+Insert queries are created with the C<insert-into> method on the C<SQL::Builder> object. All other
+options can be passed in any order. All options overwrite the current value. Each option returns the
+InsertBuilder instance, allowing for a chain style:
+
+=begin code :lang<raku>
+$sql.insert-into("table").values([:a(1), :b(2)])
+# INSERT INTO "table" ("a", "b") VALUES (?, ?)
+=end code
+
+The Insert query requires some values to insert. You may specify this with the C<values> clause to
+provide values verbatim, or the combination of C<columns> and C<query> to get values from a subquery
+(typically a sub-select).
+
+=head2 new(Str $table)
+
+Creates a C<InsertBuilder> for the given table.
+
+=head2 values(@values)
+
+Set the data to be inserted. The data is a List of Pairs, where the key is the column name (as an
+C<Identifier>), and the value is the value (interpreted as a C<Placeholder>). This may be passed in
+a variety of styles, all equivalent:
+
+=begin code :lang<raku>
+$sql.insert-into("table").values([:a(1), :b(2)])
+$sql.insert-into("table").values(:a(1), :b(2))
+$sql.insert-into("table").values([:a(1)], :b(2))
+# sql: INSERT INTO "table" ("a", "b") VALUES (?, ?)
+# bind: [1, 2]
+=end code
+
+This only supports inserting a single row.
+
+=head2 columns(@columns)
+
+Sets the columns to insert, as a List of columns (interpreted as C<Identifier>s). Used in
+combination with C<query>, see below for an example.
+
+=head2 query(SQLStatement $query)
+
+Provides the values to insert from the result of a query. This query is typically a Select statement
+but may be other queries depending on database support.
+
+=begin code :lang<raku>
+my $inner = $sql.from("t1").select("a", "b").order-by("a").limit(1);
+$sql.insert-into("t2").columns("c", "d").query($inner);
+# INSERT INTO "t2" ("c", "d") SELECT "a", "b" FROM "t1" ORDER BY "a" LIMIT 1
+=end code
+
+=head2 returning(@columns)
+
+Provides a C<RETURNING> clause, with list of columns (or other expressions) to return. This works
+identically to the C<select> clause of a Select query, see that documentation above.
+
+=begin code :lang<raku>
+$sql.insert-into("table").values(:a(1), :b(2), :c(3)).returning("b", Fn.new("LOWER", "c"))
+# INSERT INTO "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 =end code
 
 =head1 DELETE QUERIES
