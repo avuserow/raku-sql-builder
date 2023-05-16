@@ -525,21 +525,84 @@ method from(|c) {
     SelectBuilder.new(|c);
 }
 
-# TODO: implement these
-# class UpdateBuilder does SQLSyntax {
-#     has SQLSyntax $.from;
-#     has ... @.values;
-#     has ... $.returning;
-#     has ConditionClause $.where;
-# }
-# 
-# multi method update(Str $table) {
-#     return UpdateBuilder.new(:table(Identifier.new($table)));
-# }
-# 
-# multi method update(Identifier $table) {
-#     return UpdateBuilder.new(:$table);
-# }
+class UpdateBuilder does SQLSyntax {
+    has SQLSyntax $.table;
+    has @!values;
+    has @!columns;
+    has $!query;
+    has @!returning;
+    has ConditionClause $.where;
+
+    proto method new(|) {*}
+    multi method new(Str $table) {
+        return self.bless(:table(Identifier.new($table)));
+    }
+
+    multi method new(Identifier $table) {
+        return self.bless(:$table);
+    }
+
+    method set(*@values, *%values) {
+        @!values = @values;
+        append @!values, %values.sort;
+        self;
+    }
+
+    method returning(*@columns, *%pairs) {
+        @!returning = |@columns, |%pairs.pairs.sort;
+        self;
+    }
+
+    method where(|c) {
+        $!where = ConditionClause.new(|c);
+        self;
+    }
+
+    method build-fragment {
+        my $fragment = self.build;
+        SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
+    }
+
+    method build {
+        die "refusing to UPDATE without a WHERE clause" unless $!where;
+
+        my @bind;
+        my $sql = 'UPDATE ';
+
+        given $!table.build-fragment {
+            $sql ~= .sql;
+            append @bind, .bind;
+        }
+
+        $sql ~= ' SET ';
+
+        for @!values.kv -> $i, $pair {
+            my $col = fragment(Identifier, $pair.key).build-fragment;
+            my $val = fragment(Placeholder, $pair.value).build-fragment;
+
+            $sql ~= ', ' if $i > 0;
+            $sql ~= "{$col.sql} = {$val.sql}";
+            append @bind, $col.bind;
+            append @bind, $val.bind;
+        }
+
+        given $!where.?build-fragment {
+            $sql ~= ' WHERE ' ~ .sql;
+            append @bind, .bind;
+        }
+
+        if @!returning {
+            $sql ~= ' RETURNING ';
+            append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
+        }
+
+        return SQLFragment.new(:$sql, :@bind);
+    }
+}
+
+method update(|c) {
+    UpdateBuilder.new(|c);
+}
 
 class InsertBuilder does SQLSyntax does SQLStatement {
     has SQLSyntax $.table;
@@ -1116,6 +1179,58 @@ identically to the C<select> clause of a Select query, see that documentation ab
 $sql.insert-into("table").values(:a(1), :b(2), :c(3)).returning("b", Fn.new("LOWER", "c"))
 # INSERT INTO "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 =end code
+
+=head UPDATE QUERIES
+
+Update queries are created with the C<update> method on the C<SQL::Builder> object. All other
+options can be passed in any order. All options overwrite the current value. Each option returns the
+UpdateBuilder instance, allowing for a chain style:
+
+=begin code :lang<raku>
+$sql.update("table").set(:a(1)).where(["b", "=", 2])
+# UPDATE "table" SET a = ? WHERE "a" = ?
+=end code
+
+=head2 new(Str $table)
+
+Creates a C<UpdateBuilder> for the given table.
+
+=head2 set(@values)
+
+Set the data to be updated. The data is a List of Pairs, where the key is the column name (as an
+C<Identifier>), and the value is the value (interpreted as a C<Placeholder>). This may be passed in
+a variety of styles, all equivalent:
+
+=begin code :lang<raku>
+$sql.update("table").set([:a(1), :b(2)]).where(:c(3))
+$sql.update("table").set(:a(1), :b(2)).where(:c(3))
+$sql.update("table").set([:a(1)], :b(2)).where(:c(3))
+# sql: UPDATE "table" SET "a" = ?, "b" = ? WHERE "c" = ?
+# bind: [1, 2, 3]
+=end code
+
+If you want to provide an expression for a column, use a C<Fn> or C<Raw> value:
+
+=begin code :lang<raku>
+my $fn = Fn.new("MAX", "a", "d");
+my $expr = Raw.fmt('{} + {}', Identifier.new("c"), Placeholder.new(1234));
+$sql.update("table").set([:a($fn), :b($expr)]).where(:c(3))
+# sql: UPDATE "table" SET "a" = MAX("a", "d"), "b" = "c" + ? WHERE "c" = ?
+# bind: [1234, 3]
+=end code
+
+=head2 where($where) / where(@where)
+
+Provides a C<WHERE> clause with one or more values. This works identically to C<where> for Select
+queries, and is used to make a ConditionClause. See documentation for C<where> above, and on
+C<ConditionClause> below.
+
+Unlike Select queries, this is required, even if you want to update all rows in a table.
+
+=head2 returning(@columns)
+
+Provides a C<RETURNING> clause, with list of columns (or other expressions) to return. This works
+identically to the C<select> clause of a Select query, see that documentation above.
 
 =head1 DELETE QUERIES
 
