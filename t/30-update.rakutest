@@ -1,0 +1,28 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'basic update', {
+    given $sql.update('table').set(:a(1)).where(:a(2)).build {
+        is .sql, 'UPDATE "table" SET "a" = ? WHERE "a" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.update('table').set([:a(1)]).where(:a(2)).build {
+        is .sql, 'UPDATE "table" SET "a" = ? WHERE "a" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.update('table').set([:a(1), :b(2)]).where(:a(3)).build {
+        is .sql, 'UPDATE "table" SET "a" = ?, "b" = ? WHERE "a" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.update('table').set([:a(1), b => Raw.fmt('{} + 1', Identifier.new("b"))]).where(:a(3)).build {
+        is .sql, 'UPDATE "table" SET "a" = ?, "b" = "b" + 1 WHERE "a" = ?';
+        is .bind, [1, 3];
+    }
+};
+
+done-testing;
