@@ -4,19 +4,53 @@ use SQL::Builder;
 my $sql = SQL::Builder.new;
 
 subtest 'basic insert', {
-    given $sql.insert-into('table').values(:a(1)).build {
+    given $sql.insert-into('table').data(:a(1)).build {
         is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
         is .bind, [1];
     }
 
-    given $sql.insert-into('table').values([:a(1)]).build {
+    given $sql.insert-into('table').data([:a(1)]).build {
         is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
         is .bind, [1];
     }
 
-    given $sql.insert-into('table').values([:a(1), :b(2)]).build {
+    given $sql.insert-into('table').data([:a(1), :b(2)]).build {
         is .sql, 'INSERT INTO "table" ("a", "b") VALUES (?, ?)';
         is .bind, [1, 2];
+    }
+};
+
+subtest 'insert with columns/values', {
+    given $sql.insert-into('table').columns('a').values(1).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
+        is .bind, [1];
+    }
+
+    given $sql.insert-into('table').columns(['a',]).values([1,]).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?)';
+        is .bind, [1];
+    }
+
+    given $sql.insert-into('table').columns(['a', 'b']).values([1, 2]).build {
+        is .sql, 'INSERT INTO "table" ("a", "b") VALUES (?, ?)';
+        is .bind, [1, 2];
+    }
+};
+
+subtest 'insert with multi-values', {
+    given $sql.insert-into('table').columns('a').multi-values([[1,], [2,]]).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?), (?)';
+        is .bind, [1, 2];
+    }
+
+    given $sql.insert-into('table').columns(['a',]).multi-values([[1,], [2,]]).build {
+        is .sql, 'INSERT INTO "table" ("a") VALUES (?), (?)';
+        is .bind, [1, 2];
+    }
+
+    given $sql.insert-into('table').columns(['a', 'b']).multi-values([[1, 2], [3, 4]]).build {
+        is .sql, 'INSERT INTO "table" ("a", "b") VALUES (?, ?), (?, ?)';
+        is .bind, [1, 2, 3, 4];
     }
 };
 

@@ -626,17 +626,30 @@ class InsertBuilder does SQLSyntax does SQLStatement {
         self;
     }
 
-    method values(*@values, *%values) {
-        # XXX: maybe rename to `data`, and repurpose this method for
-        # multi-values support (in combination with `columns`?)
-        @!values = @values;
-        append @!values, %values.sort;
+    method data(*@values, *%values) {
+        my @data = |@values, |%values.sort;
+        die "all arguments passed to 'data' must be Pairs" if @data.first({$_ !~~ Pair}, :k);
+        @!columns = @data.map(*.key);
+        @!values = [@data.map(*.value),];
+        $!query = Any;
         self;
     }
 
     method columns(*@columns) {
         @!columns = @columns;
-        @!values = ();
+        self;
+    }
+
+    method values(*@values) {
+        $!query = Any;
+        @!values = [@values,];
+        self;
+    }
+
+    method multi-values(@multi-values) {
+        die "argument to 'multi-values' must be list of lists" unless @multi-values.all ~~ Positional;
+        $!query = Any;
+        @!values = @multi-values;
         self;
     }
 
@@ -644,6 +657,7 @@ class InsertBuilder does SQLSyntax does SQLStatement {
         # XXX: should we validate that this query is either a SELECT statement,
         # or has a RETURNING clause somehow?
         $!query = $query;
+        @!values = ();
         self;
     }
 
@@ -663,10 +677,15 @@ class InsertBuilder does SQLSyntax does SQLStatement {
 
         if @!values {
             $sql ~= ' (';
-            append-fragments($sql, @bind, Identifier, @!values.map(*.key), :join(', '));
-            $sql ~= ') VALUES (';
-            append-fragments($sql, @bind, Placeholder, @!values.map(*.value), :join(', '));
-            $sql ~= ')';
+            append-fragments($sql, @bind, Identifier, @!columns, :join(', '));
+            $sql ~= ') VALUES ';
+
+            for @!values.kv -> $i, $v {
+                $sql ~= ', ' if $i != 0;
+                $sql ~= '(';
+                append-fragments($sql, @bind, Placeholder, $v, :join(', '));
+                $sql ~= ')';
+            }
         } elsif @!columns && $!query {
             $sql ~= ' (';
             append-fragments($sql, @bind, Identifier, @!columns, :join(', '));
