@@ -10,6 +10,14 @@ my sub quote-column(Str $s) {
     return qq!"$s"!;
 }
 
+class NoSinkError is Exception {
+    has $.name = '(an unknown class)';
+
+    method message() {
+        "$.name() objects cannot be used in sink context - did you forget to use the result?";
+    }
+}
+
 class SQLFragment {
     has $.sql;
     has @.bind;
@@ -316,14 +324,6 @@ my class Join does SQLSyntax {
         }
 
         return SQLFragment.new(:$sql, :@bind);
-    }
-}
-
-class NoSinkError is Exception {
-    has $.name = '(an unknown class)';
-
-    method message() {
-        "$.name() objects cannot be used in sink context - did you forget to use the result?";
     }
 }
 
