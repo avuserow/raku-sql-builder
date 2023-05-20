@@ -13,6 +13,10 @@ my sub quote-column(Str $s) {
 class SQLFragment {
     has $.sql;
     has @.bind;
+
+    method sink() {
+        NoSinkError.new(:name<SQLFragment>).throw;
+    }
 }
 
 my role SQLSyntax {
@@ -315,6 +319,14 @@ my class Join does SQLSyntax {
     }
 }
 
+class NoSinkError is Exception {
+    has $.name = '(an unknown class)';
+
+    method message() {
+        "$.name() objects cannot be used in sink context - did you forget to use the result?";
+    }
+}
+
 class SelectBuilder does SQLSyntax does SQLStatement {
     has @.select-columns;
     has SQLSyntax $.from;
@@ -344,6 +356,10 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
     multi method new(Identifier $table) {
         return self.bless(:from($table));
+    }
+
+    method sink() {
+        NoSinkError.new(:name<SelectBuilder>).throw;
     }
 
     method clone {
@@ -542,6 +558,10 @@ class UpdateBuilder does SQLSyntax {
         return self.bless(:$table);
     }
 
+    method sink() {
+        NoSinkError.new(:name<UpdateBuilder>).throw;
+    }
+
     method set(*@values, *%values) {
         @!values = @values;
         append @!values, %values.sort;
@@ -619,6 +639,10 @@ class InsertBuilder does SQLSyntax does SQLStatement {
 
     multi method new(Identifier $table) {
         return self.bless(:$table);
+    }
+
+    method sink() {
+        NoSinkError.new(:name<InsertBuilder>).throw;
     }
 
     method returning(*@columns, *%pairs) {
@@ -724,6 +748,10 @@ class DeleteBuilder does SQLSyntax does SQLStatement {
 
     multi method new(Identifier $table) {
         return self.bless(:$table);
+    }
+
+    method sink() {
+        NoSinkError.new(:name<DeleteBuilder>).throw;
     }
 
     method returning(*@columns, *%pairs) {
