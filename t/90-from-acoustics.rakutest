@@ -10,7 +10,7 @@ subtest 'search-history', {
         select(['songs.song-id', Raw.fmt('{} / 2.0 AS rating', Identifier.new('ratings.rating')), 'history.who::jsonb']).
         join('songs', :on(['songs.song-id', '=', Identifier.new('history.song-id')])).
         join(:left, 'ratings', :on(:and, ['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', $ratings-who])).
-        order-by(Raw.fmt('{} DESC', Identifier.new('song-start')));
+        order-by(\("song-start", :desc));
 
     with $q.build {
         is .sql, q{

@@ -178,6 +178,20 @@ sub aliased-column-list(@columns) {
     });
 }
 
+# order-by-column-list handles the Capture syntax used in the ORDER BY clause to implement options
+# for ordering (e.g. DESC, ASC)
+sub order-by-column-list(@columns) {
+    return @columns.map({
+        when Capture {
+            die 'unknown argument in order-by list, expected: \\($column-name, :desc|:asc)' unless $_ ~~ :($, :$desc) || $_ ~~ :($, :$asc);
+            Raw.fmt('{} {}', fragment(Identifier, .[0]), fragment(Raw, .Hash.keys[0].uc));
+        }
+        default {
+            $_;
+        }
+    });
+}
+
 class ConditionClause does SQLSyntax {
     has Str $.mode = 'none';
     has @.clauses;
@@ -489,7 +503,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
         if @!order-by-columns {
             $sql ~= ' ORDER BY ';
-            append-fragments($sql, @bind, Identifier, @!order-by-columns, :join(', '));
+            append-fragments($sql, @bind, Identifier, order-by-column-list(@!order-by-columns), :join(', '));
         }
 
         if $!limit-count {
@@ -948,7 +962,8 @@ Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'));
 =head2 Fn
 
 Fn (function) is a helper to make function calls. The first item is taken as a Raw value, and all
-following items default to Identifiers.
+following items default to Identifiers. This can be used for any function-like syntax in SQL, not
+just real functions.
 
 Examples:
 
@@ -1145,7 +1160,7 @@ Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see
 
 =head2 order-by(*@columns)
 
-Provides an C<ORDER BY> clause on the specified columns:
+Provides an C<ORDER BY> clause on the specified columns. Each value is interpreted as an C<Identifier>, though you may specify another subclass of C<SQLSyntax> to use an expression instead:
 
 =begin code :lang<raku>
 # pick 10 shortest shortest songs
@@ -1153,14 +1168,18 @@ $sql.from('songs').select('title').order-by('length').limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
 # bind: 10
 
-# pick 10 longest songs
-$sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10);
-# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
-# bind: 10
-
 # pick 10 random items
 $sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
+# bind: 10
+=end code
+
+A C<Capture> may be specified to use descending order, by providing the column name (or expression) and C<:desc>. C<:asc> is also supported if you wish to be explicit about ascending order.
+
+=begin code :lang<raku>
+# pick 10 longest songs
+$sql.from('songs').select('title').order-by(\("length", :desc)).limit(10);
+# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
 # bind: 10
 =end code
 
