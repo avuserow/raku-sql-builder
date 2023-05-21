@@ -163,9 +163,14 @@ class Fn does SQLSyntax is export {
 # creation of column aliases.
 sub aliased-column-list(@columns) {
     # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
+    # Preferred form for aliasing is using a Capture: \($column-name, :as<alias>)
     return @columns.map({
         when Pair {
             Raw.fmt('{} AS {}', fragment(Identifier, .value), fragment(Identifier, .key));
+        }
+        when Capture {
+            die 'unknown argument in column list, expected: \\($column-name, :as<alias>)' unless $_ ~~ :($, :$as!);
+            Raw.fmt('{} AS {}', fragment(Identifier, .[0]), fragment(Identifier, .<as>));
         }
         default {
             $_;
@@ -332,7 +337,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
     has SQLSyntax $.from;
     has Join @.join-items;
     has ConditionClause $.where;
-    has @.order-columns;
+    has @.order-by-columns;
     has @.group-by-columns;
     has ConditionClause $.having;
     has SQLSyntax $.limit-count;
@@ -367,7 +372,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
             :from($!from.clone),
             :join(@!join-items.clone),
             :where($!where.clone),
-            :order-columns(@!order-columns),
+            :order-by-columns(@!order-by-columns),
             :group-by-columns(@!group-by-columns.clone),
             :having($!having.clone),
             |(:limit-count(.clone) with $!limit-count),
@@ -391,13 +396,19 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         self;
     }
 
-    multi method select(*@columns, *%pairs) {
-        @!select-columns = |@columns, |%pairs.sort;
+    # No named parameters permitted
+    multi method select(*@c, *% where .elems == 0) {
+        @!select-columns = |@c;
         self;
     }
 
+    # multi method select(*@columns, *%pairs) {
+    #     @!select-columns = |@columns, |%pairs.sort;
+    #     self;
+    # }
+
     method order-by(*@columns) {
-        @!order-columns = @columns;
+        @!order-by-columns = @columns;
         self;
     }
 
@@ -417,6 +428,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
     }
 
     # Don't use multi method here to avoid inheriting Cool.join
+    # TODO: add proto method to let us use multi methods without calling Cool.join
     method join($table, :@on, :$using, Str :$as, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
         my @modes = (:$inner, :$left, :$right, :$full).grep({.value});
         if @modes > 1 {
@@ -475,9 +487,9 @@ class SelectBuilder does SQLSyntax does SQLStatement {
             }
         }
 
-        if @!order-columns {
+        if @!order-by-columns {
             $sql ~= ' ORDER BY ';
-            append-fragments($sql, @bind, Identifier, @!order-columns, :join(', '));
+            append-fragments($sql, @bind, Identifier, @!order-by-columns, :join(', '));
         }
 
         if $!limit-count {
@@ -983,11 +995,21 @@ Emits a C<SELECT *>.
 
 Specifies the list of values to return. Each column defaults to C<Identifier>.
 
-If a C<Pair> is provided, then this is treated as a column alias:
+A column may be aliased with the use of a Capture in the form C<\("column-name", :as<alias>)>.
+Alternately, a C<Pair> may be provided if passed positionally (not recommended, deprecated).
 
 =begin code :lang<raku>
-$sql.from('table').select(:foo<bar>);
+# Preferred form: using a capture explicitly:
+$sql.from('table').select(\("bar", :as<foo>));
+
+# DEPRECATED: using a Pair passed positionally:
+$sql.from('table').select((:foo<bar>));
+$sql.from('table').select([:foo<bar>]);
+$sql.from('table').select(foo => "bar");
 # sql: SELECT "bar" AS "foo" FROM "table"
+
+# Passing as a named argument is not allowed due to ambiguity
+# $sql.from('table').select(:foo<bar>);
 =end code
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the
