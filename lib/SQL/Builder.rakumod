@@ -294,20 +294,14 @@ my class Join does SQLSyntax {
     has ConditionClause $.on;
     has SQLSyntax $.using;
 
-    submethod BUILD(:$mode, :$table, :@on, :$alias, :$using) {
+    submethod BUILD(:$mode, :$table, :$on, :$alias, :$using) {
         $!table = $table;
         $!mode = $mode;
         $!alias = $alias;
 
-        # XXX: would be better to reuse the where clause logic somehow
-        # most likely to push that logic into ConditionClause
-        if @on {
-            # XXX: should this be a Capture instead? (probably)
-            if @on[0] ~~ Pair && @on[0].key eq 'and'|'or' && @on[0].value ~~ Bool  {
-                $!on = ConditionClause.new(|(@on[0].key => True), @on[1..*]);
-            } else {
-                $!on = ConditionClause.new(@on);
-            }
+        if $on {
+            my $c = $on.Capture;
+            $!on = ConditionClause.new($c.List, |$c.Hash);
         }
 
         if $using {
