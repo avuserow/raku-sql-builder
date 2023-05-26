@@ -115,36 +115,8 @@ subtest 'column alias', {
 
 subtest 'sink error', {
     dies-ok {
-        $sql.from('t1').select('a');
-    }, 'selectbuilder';
-
-    dies-ok {
         $sql.delete('t1').select('a').build;
     }, 'selectbuilder build';
-
-    dies-ok {
-        $sql.insert-into('t1').data([:a<b>]);
-    }, 'insertbuilder';
-
-    dies-ok {
-        $sql.insert-into('t1').data([:a<b>]).build;
-    }, 'insertbuilder build';
-
-    dies-ok {
-        $sql.update('t1').set([:b<a>]).where([:a<b>]);
-    }, 'updatebuilder';
-
-    dies-ok {
-        $sql.update('t1').set([:b<a>]).where([:a<b>]).build;
-    }, 'updatebuilder build';
-
-    dies-ok {
-        $sql.delete-from('t1').where([:a<b>]);
-    }, 'deletebuilder';
-
-    dies-ok {
-        $sql.delete-from('t1').where([:a<b>]).build;
-    }, 'deletebuilder build';
 };
 
 done-testing;

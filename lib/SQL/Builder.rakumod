@@ -371,10 +371,6 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         return self.bless(:from($table));
     }
 
-    method sink() {
-        NoSinkError.new(:name<SelectBuilder>).throw;
-    }
-
     method clone {
         nextwith :select-columns(@!select-columns.clone),
             :from($!from.clone),
@@ -578,10 +574,6 @@ class UpdateBuilder does SQLSyntax {
         return self.bless(:$table);
     }
 
-    method sink() {
-        NoSinkError.new(:name<UpdateBuilder>).throw;
-    }
-
     method set(*@values, *%values) {
         @!values = @values;
         append @!values, %values.sort;
@@ -659,10 +651,6 @@ class InsertBuilder does SQLSyntax does SQLStatement {
 
     multi method new(Identifier $table) {
         return self.bless(:$table);
-    }
-
-    method sink() {
-        NoSinkError.new(:name<InsertBuilder>).throw;
     }
 
     method returning(*@columns, *%pairs) {
@@ -768,10 +756,6 @@ class DeleteBuilder does SQLSyntax does SQLStatement {
 
     multi method new(Identifier $table) {
         return self.bless(:$table);
-    }
-
-    method sink() {
-        NoSinkError.new(:name<DeleteBuilder>).throw;
     }
 
     method returning(*@columns, *%pairs) {
