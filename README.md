@@ -119,7 +119,7 @@ Raw.fmt('date_trunc({}, {})', Value.new('day'), Identifier.new('song-start'));
 Fn
 --
 
-Fn (function) is a helper to make function calls. The first item is taken as a Raw value, and all following items default to Identifiers.
+Fn (function) is a helper to make function calls. The first item is taken as a Raw value, and all following items default to Identifiers. This can be used for any function-like syntax in SQL, not just real functions.
 
 Examples:
 
@@ -168,11 +168,20 @@ select(*@columns)
 
 Specifies the list of values to return. Each column defaults to `Identifier`.
 
-If a `Pair` is provided, then this is treated as a column alias:
+A column may be aliased with the use of a Capture in the form `\("column-name", :as<alias>)`. Alternately, a `Pair` may be provided if passed positionally (not recommended, deprecated).
 
 ```raku
-$sql.from('table').select(:foo<bar>);
+# Preferred form: using a capture explicitly:
+$sql.from('table').select(\("bar", :as<foo>));
+
+# DEPRECATED: using a Pair passed positionally:
+$sql.from('table').select((:foo<bar>));
+$sql.from('table').select([:foo<bar>]);
+$sql.from('table').select(foo => "bar");
 # sql: SELECT "bar" AS "foo" FROM "table"
+
+# Passing as a named argument is not allowed due to ambiguity
+# $sql.from('table').select(:foo<bar>);
 ```
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the Pairs will always be at the end. You can avoid this by passing an Array, or parenthesizing the Pairs:
@@ -304,7 +313,7 @@ Provides a `HAVING` clause. This is handled identical to a `WHERE` clause, see t
 order-by(*@columns)
 -------------------
 
-Provides an `ORDER BY` clause on the specified columns:
+Provides an `ORDER BY` clause on the specified columns. Each value is interpreted as an `Identifier`, though you may specify another subclass of `SQLSyntax` to use an expression instead:
 
 ```raku
 # pick 10 shortest shortest songs
@@ -312,14 +321,18 @@ $sql.from('songs').select('title').order-by('length').limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY "length" limit ?
 # bind: 10
 
-# pick 10 longest songs
-$sql.from('songs').select('title').order-by(Raw.fmt('{} DESC', Identifier.new('length'))).limit(10);
-# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
-# bind: 10
-
 # pick 10 random items
 $sql.from('songs').select('title').order-by(Fn.new('RANDOM')).limit(10);
 # sql: SELECT "title" FROM "songs" ORDER BY RANDOM() limit ?
+# bind: 10
+```
+
+A `Capture` may be specified to use descending order, by providing the column name (or expression) and `:desc`. `:asc` is also supported if you wish to be explicit about ascending order.
+
+```raku
+# pick 10 longest songs
+$sql.from('songs').select('title').order-by(\("length", :desc)).limit(10);
+# sql: SELECT "title" FROM "songs" ORDER BY "length" DESC limit ?
 # bind: 10
 ```
 
@@ -343,6 +356,148 @@ sub getuser {
 my $username = "whoever";
 my $st2 = getuser().where(:$username).build;
 # $db.query($st2.sql, |$st2.bind);
+```
+
+INSERT QUERIES
+==============
+
+Insert queries are created with the `insert-into` method on the `SQL::Builder` object. All other options can be passed in any order. All options overwrite the current value. Each option returns the InsertBuilder instance, allowing for a chain style:
+
+```raku
+$sql.insert-into("table").values([:a(1), :b(2)])
+# INSERT INTO "table" ("a", "b") VALUES (?, ?)
+```
+
+The Insert query requires some values to insert. You may specify this with the `values` clause to provide values verbatim, or the combination of `columns` and `query` to get values from a subquery (typically a sub-select).
+
+new(Str $table)
+---------------
+
+Creates a `InsertBuilder` for the given table.
+
+values(@values)
+---------------
+
+Set the data to be inserted. The data is a List of Pairs, where the key is the column name (as an `Identifier`), and the value is the value (interpreted as a `Placeholder`). This may be passed in a variety of styles, all equivalent:
+
+```raku
+$sql.insert-into("table").values([:a(1), :b(2)])
+$sql.insert-into("table").values(:a(1), :b(2))
+$sql.insert-into("table").values([:a(1)], :b(2))
+# sql: INSERT INTO "table" ("a", "b") VALUES (?, ?)
+# bind: [1, 2]
+```
+
+This only supports inserting a single row.
+
+columns(@columns)
+-----------------
+
+Sets the columns to insert, as a List of columns (interpreted as `Identifier`s). Used in combination with `query`, see below for an example.
+
+query(SQLStatement $query)
+--------------------------
+
+Provides the values to insert from the result of a query. This query is typically a Select statement but may be other queries depending on database support.
+
+```raku
+my $inner = $sql.from("t1").select("a", "b").order-by("a").limit(1);
+$sql.insert-into("t2").columns("c", "d").query($inner);
+# INSERT INTO "t2" ("c", "d") SELECT "a", "b" FROM "t1" ORDER BY "a" LIMIT 1
+```
+
+returning(@columns)
+-------------------
+
+Provides a `RETURNING` clause, with list of columns (or other expressions) to return. This works identically to the `select` clause of a Select query, see that documentation above.
+
+```raku
+$sql.insert-into("table").values(:a(1), :b(2), :c(3)).returning("b", Fn.new("LOWER", "c"))
+# INSERT INTO "table" WHERE "a" = ? RETURNING "b", LOWER("c")
+```
+
+head
+====
+
+UPDATE QUERIES
+
+Update queries are created with the `update` method on the `SQL::Builder` object. All other options can be passed in any order. All options overwrite the current value. Each option returns the UpdateBuilder instance, allowing for a chain style:
+
+```raku
+$sql.update("table").set(:a(1)).where(["b", "=", 2])
+# UPDATE "table" SET a = ? WHERE "a" = ?
+```
+
+new(Str $table)
+---------------
+
+Creates a `UpdateBuilder` for the given table.
+
+set(@values)
+------------
+
+Set the data to be updated. The data is a List of Pairs, where the key is the column name (as an `Identifier`), and the value is the value (interpreted as a `Placeholder`). This may be passed in a variety of styles, all equivalent:
+
+```raku
+$sql.update("table").set([:a(1), :b(2)]).where(:c(3))
+$sql.update("table").set(:a(1), :b(2)).where(:c(3))
+$sql.update("table").set([:a(1)], :b(2)).where(:c(3))
+# sql: UPDATE "table" SET "a" = ?, "b" = ? WHERE "c" = ?
+# bind: [1, 2, 3]
+```
+
+If you want to provide an expression for a column, use a `Fn` or `Raw` value:
+
+```raku
+my $fn = Fn.new("MAX", "a", "d");
+my $expr = Raw.fmt('{} + {}', Identifier.new("c"), Placeholder.new(1234));
+$sql.update("table").set([:a($fn), :b($expr)]).where(:c(3))
+# sql: UPDATE "table" SET "a" = MAX("a", "d"), "b" = "c" + ? WHERE "c" = ?
+# bind: [1234, 3]
+```
+
+where($where) / where(@where)
+-----------------------------
+
+Provides a `WHERE` clause with one or more values. This works identically to `where` for Select queries, and is used to make a ConditionClause. See documentation for `where` above, and on `ConditionClause` below.
+
+Unlike Select queries, this is required, even if you want to update all rows in a table.
+
+returning(@columns)
+-------------------
+
+Provides a `RETURNING` clause, with list of columns (or other expressions) to return. This works identically to the `select` clause of a Select query, see that documentation above.
+
+DELETE QUERIES
+==============
+
+Delete queries are created with the `delete-from` method on the `SQL::Builder` object. All other options can be passed in any order. All options overwrite the current value. Each option returns the DeleteBuilder instance, allowing for a chain style:
+
+```raku
+$sql.delete-from("table").where(["a", "=", 1])
+# DELETE FROM "table" WHERE "a" = ?
+```
+
+new(Str $table)
+---------------
+
+Creates a `DeleteBuilder` for the given table.
+
+where($where) / where(@where)
+-----------------------------
+
+Provides a `WHERE` clause with one or more values. This works identically to `where` for Select queries, and is used to make a ConditionClause. See documentation for `where` above, and on `ConditionClause` below.
+
+Unlike Select queries, this is required, even if you want to delete all rows in a table.
+
+returning(@columns)
+-------------------
+
+Provides a `RETURNING` clause, with list of columns (or other expressions) to return. This works identically to the `select` clause of a Select query, see that documentation above.
+
+```raku
+$sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c"))
+# DELETE FROM "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 ```
 
 ConditionClause
