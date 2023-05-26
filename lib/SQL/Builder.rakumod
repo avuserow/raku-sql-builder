@@ -353,6 +353,11 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
     proto method new(|) {*}
 
+    multi method new(SQLStatement $inner, :$as!) {
+        my $from = Raw.fmt('{} AS {}', $inner, fragment(Identifier, $as));
+        return self.bless(:$from);
+    }
+
     # Multiple FROM sources NYI
     multi method new(*%pairs where *.elems == 1) {
         my $pair = %pairs.head;
