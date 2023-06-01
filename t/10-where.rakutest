@@ -27,11 +27,11 @@ subtest 'where edge cases', {
 
 subtest 'where-subgroup', {
     dies-ok {
-        $sql.from('table').where(:and, :foo(0), \(:or[:bar(1), :bar(0)])).select('foo').build;
+        $sql.from('table').where(:and, :foo(0), \(:or[:bar(1), :bar(0)])).select('foo').build.sql;
     }, 'common typo detected';
 
     dies-ok {
-        $sql.from('table').where(:and, :or, [:foo(1)]).select('foo').build;
+        $sql.from('table').where(:and, :or, [:foo(1)]).select('foo').build.sql;
     }, 'common typo detected';
 
     given $sql.from('table').where(:and, [:foo(1), \(:or[:bar(2), :bar(3)])]).select('foo').build {
@@ -48,7 +48,344 @@ subtest 'where-subgroup', {
         is .sql, 'SELECT "foo" FROM "table" WHERE ("bar" = ? OR "bar" = ?)';
         is .bind, [4, 5];
     }
-
 };
+
+subtest 'where new syntax scalar variable', {
+    my $where1 = ['a', '=', 1];
+    given $sql.from('table').select('a').where2($where1).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    my $where2 = :1a;
+    given $sql.from('table').select('a').where2($where2).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+}
+
+subtest 'where new syntax array variable', {
+    my @where1 = ['a', '=', 1];
+    given $sql.from('table').select('a').where2(@where1).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    my @where2 = [['a', '=', 1],];
+    given $sql.from('table').select('a').where2(@where2).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    my @where3 = ['a', '=', 1], ['b', '=', 2];
+    given $sql.from('table').select('a').where2(@where3).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+}
+
+
+subtest 'where new syntax positional', {
+    given $sql.from('table').select('a').where2(["a", "=", 1]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2(["a", "=", 1], ["b", "=", 2]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2(["a", "=", 1], ["b", "=", 2], ["c", "=", 3]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1],]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1], ["b", "=", 2]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1], ["b", "=", 2], ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+};
+
+subtest 'where new syntax positional with single named', {
+    given $sql.from('table').select('a').where2(:5p, ["a", "=", 1]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ?';
+        is .bind, [1, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, ["a", "=", 1], ["b", "=", 2]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, ["a", "=", 1], ["b", "=", 2], ["c", "=", 3]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ? AND "p" = ?';
+        is .bind, [1, 2, 3, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [["a", "=", 1]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ?';
+        is .bind, [1, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [["a", "=", 1],]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ?';
+        is .bind, [1, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [["a", "=", 1], ["b", "=", 2]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [["a", "=", 1], ["b", "=", 2], ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ? AND "p" = ?';
+        is .bind, [1, 2, 3, 5];
+    }
+};
+
+subtest 'where new syntax positional with two named', {
+    given $sql.from('table').select('a').where2(:5p, :6p2, ["a", "=", 1]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, ["a", "=", 1], ["b", "=", 2]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, ["a", "=", 1], ["b", "=", 2], ["c", "=", 3]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 3, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [["a", "=", 1]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [["a", "=", 1],]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [["a", "=", 1], ["b", "=", 2]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [["a", "=", 1], ["b", "=", 2], ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 3, 5, 6];
+    }
+};
+
+subtest 'where new syntax with only pairs, all same type', {
+    given $sql.from('table').select('a').where2(:1a).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1,];
+    }
+
+    given $sql.from('table').select('a').where2(:1a, :2b).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2((:1a)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1,];
+    }
+
+    given $sql.from('table').select('a').where2([:1a]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ?';
+        is .bind, [1,];
+    }
+
+    given $sql.from('table').select('a').where2((:1a, :2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([:1a, :2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([:1a], [:2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2((:1a), (:2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+};
+
+subtest 'where new syntax with pairs, one named and some positional', {
+    given $sql.from('table').select('a').where2(:5p, (:1a)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ?';
+        is .bind, [1, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [:1a]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ?';
+        is .bind, [1, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, (:1a, :2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [:1a, :2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, [:1a], [:2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, (:1a), (:2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ?';
+        is .bind, [1, 2, 5];
+    }
+};
+
+subtest 'where new syntax with pairs, two named and some positional', {
+    given $sql.from('table').select('a').where2(:5p, :6p2, (:1a)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [:1a]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, (:1a, :2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [:1a, :2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, [:1a], [:2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+
+    given $sql.from('table').select('a').where2(:5p, :6p2, (:1a), (:2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "p" = ? AND "p2" = ?';
+        is .bind, [1, 2, 5, 6];
+    }
+};
+
+subtest 'where new syntax positionals with mixed Array/Pairs', {
+    given $sql.from('table').select('a').where2([:1a], ["b", "=", 2]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([:1a], ["b", "=", 2], ["c", "=", 3]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').select('a').where2([:1a, :2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([:1a, :2b, ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').select('a').where2([:1a, [:2b], ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').select('a').where2(["a", "=", 1], (:2b)).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2(["a", "=", 1], (:2b), ["c", "=", 3]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1], :2b]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ?';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2([["a", "=", 1], :2b, ["c", "=", 3]]).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE "a" = ? AND "b" = ? AND "c" = ?';
+        is .bind, [1, 2, 3];
+    }
+}
+
+subtest 'where new syntax capture', {
+    given $sql.from('table').select('a').where2(\(:or2(["a", "=", 1]))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ?)';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2(\(:and2(["a", "=", 1]))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ?)';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2(\(:or2(:1a))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ?)';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2(\(:and2(:1a))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ?)';
+        is .bind, [1];
+    }
+
+    given $sql.from('table').select('a').where2(\(:or2(["a", "=", 1], ["b", "=", 2]))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ? OR "b" = ?)';
+        is .bind, [1, 2];
+    }
+
+    given $sql.from('table').select('a').where2(\(:and2(["a", "=", 1], ["b", "=", 2]))).build {
+        is .sql, 'SELECT "a" FROM "table" WHERE ("a" = ? AND "b" = ?)';
+        is .bind, [1, 2];
+    }
+}
+
+subtest 'invalid', {
+    dies-ok {$sql.from('table').select('a').where2((:5p), "a", "=", 1, :5p).build.sql}
+    dies-ok {$sql.from('table').select('a').where2([[:1a], "=", 2]).build.sql}
+    dies-ok {$sql.from('table').select('a').where2(["a", "="]).build.sql}
+};
+
 
 done-testing;

@@ -221,12 +221,44 @@ class ConditionClause does SQLSyntax {
         self.bless(:mode<and>, :@clauses);
     }
 
+    method new2(+@c, *%k) {
+        if @c.elems == 3 && @c[0] !~~ Positional|Pair|Capture {
+            # If this is a simple ["foo", "=", "bar"] clause, it's already been flattened enough
+            self.bless(:mode<and>, :clauses[@c, |%k.pairs.sort]);
+        } else {
+            self.bless(:mode<and>, :clauses[|@c, |%k.pairs.sort]);
+        }
+    }
+
+    method new-or2(+@c, *%k) {
+        if @c.elems == 3 && @c[0] !~~ Positional|Pair|Capture {
+            # If this is a simple ["foo", "=", "bar"] clause, it's already been flattened enough
+            self.bless(:mode<or>, :clauses[@c, |%k.pairs.sort]);
+        } else {
+            self.bless(:mode<or>, :clauses[|@c, |%k.pairs.sort]);
+        }
+    }
+
     submethod BUILD(:$mode = 'none', :$clauses) {
         $!mode = $mode;
         @!clauses = $clauses.list;
 
         if $mode eq 'none' && @!clauses > 1 {
             die "where clause has multiple clauses, but no mode (try ':and' or ':or')";
+        }
+    }
+
+    method !make-pair(Pair $clause, @parts, @bind) {
+        my $key = fragment(Identifier, $clause.key).build-fragment;
+
+        if $clause.value === Nil {
+            push @parts, "{$key.sql} IS NULL";
+            append @bind, $key.bind;
+        } else {
+            my $value = fragment(Placeholder, $clause.value).build-fragment;
+            push @parts, "{$key.sql} = {$value.sql}";
+            append @bind, $key.bind;
+            append @bind, $value.bind;
         }
     }
 
@@ -237,17 +269,10 @@ class ConditionClause does SQLSyntax {
         for @!clauses -> $clause {
             given $clause {
                 when Pair {
-                    my $key = fragment(Identifier, $clause.key).build-fragment;
-
-                    if $clause.value === Nil {
-                        push @parts, "{$key.sql} IS NULL";
-                        append @bind, $key.bind;
-                    } else {
-                        my $value = fragment(Placeholder, $clause.value).build-fragment;
-                        push @parts, "{$key.sql} = {$value.sql}";
-                        append @bind, $key.bind;
-                        append @bind, $value.bind;
-                    }
+                    self!make-pair($clause, @parts, @bind);
+                }
+                when $_ ~~ Positional && .elems == 1 && .[0] ~~ Pair {
+                    self!make-pair($clause[0], @parts, @bind);
                 }
                 when Capture {
                     die "unexpected arguments (expected only one of :and/:or): {$clause.raku}" if $clause.elems;
@@ -255,11 +280,21 @@ class ConditionClause does SQLSyntax {
                     die "unexpected arguments (expected only one of :and/:or): {$clause.raku}" if $pairs.elems != 1;
                     my $pair = $pairs.head;
                     my $key = $pair.key;
-                    die "unknown key (expected 'and' or 'or'): $key" unless $key eq 'and'|'or';
+                    die "unknown key (expected 'and' or 'or'): $key" unless $key eq 'and'|'or'|'or2'|'and2';
 
-                    my $inner = ConditionClause.new(|($key => True), $pair.value).build-fragment;
-                    push @parts, '(' ~ $inner.sql ~ ')';
-                    append @bind, $inner.bind;
+                    if $key eq 'or2' {
+                        my $inner = ConditionClause.new-or2($pair.value).build-fragment;
+                        push @parts, '(' ~ $inner.sql ~ ')';
+                        append @bind, $inner.bind;
+                    } elsif $key eq 'and2' {
+                        my $inner = ConditionClause.new2($pair.value).build-fragment;
+                        push @parts, '(' ~ $inner.sql ~ ')';
+                        append @bind, $inner.bind;
+                    } else {
+                        my $inner = ConditionClause.new(|($key => True), $pair.value).build-fragment;
+                        push @parts, '(' ~ $inner.sql ~ ')';
+                        append @bind, $inner.bind;
+                    }
                 }
                 when Positional {
                     die "wrong number of args (needed 3): {$clause.raku}" unless $clause.elems == 3;
@@ -381,7 +416,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
             :from($!from.clone),
             :join(@!join-items.clone),
             :where($!where.clone),
-            :order-by-columns(@!order-by-columns),
+            :order-by-columns(@!order-by-columns.clone),
             :group-by-columns(@!group-by-columns.clone),
             :having($!having.clone),
             |(:limit-count(.clone) with $!limit-count),
@@ -391,6 +426,11 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
     method where(|c) {
         $!where = ConditionClause.new(|c);
+        self;
+    }
+
+    method where2(|c) {
+        $!where = ConditionClause.new2(|c);
         self;
     }
 
