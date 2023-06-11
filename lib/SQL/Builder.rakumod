@@ -196,32 +196,7 @@ class ConditionClause does SQLSyntax {
     has Str $.mode = 'none';
     has @.clauses;
 
-    # don't inherit new
-    proto method new(|) {*}
-    multi method new(*%clauses where *.elems == 1) {
-        self.bless(:clauses(%clauses.head));
-    }
-
-    # Single clause (value)
-    multi method new($clause, *%rest where *.elems == 0) {
-        self.bless(:clauses[$clause,]);
-    }
-
-    # Single clause (list)
-    multi method new(@clause where *.elems == 1, *%rest where *.elems == 0) {
-        self.bless(:clauses(@clause));
-    }
-
-    # Multiple clauses
-    multi method new(@clauses, :$or!, *%rest where *.elems == 0) {
-        self.bless(:mode<or>, :@clauses);
-    }
-
-    multi method new(@clauses, :$and!, *%rest where *.elems == 0) {
-        self.bless(:mode<and>, :@clauses);
-    }
-
-    method new2(+@c, *%k) {
+    method new(+@c, *%k) {
         if @c.elems == 3 && @c[0] !~~ Positional|Pair|Capture {
             # If this is a simple ["foo", "=", "bar"] clause, it's already been flattened enough
             self.bless(:mode<and>, :clauses[@c, |%k.pairs.sort]);
@@ -230,7 +205,7 @@ class ConditionClause does SQLSyntax {
         }
     }
 
-    method new-or2(+@c, *%k) {
+    method new-or(+@c, *%k) {
         if @c.elems == 3 && @c[0] !~~ Positional|Pair|Capture {
             # If this is a simple ["foo", "=", "bar"] clause, it's already been flattened enough
             self.bless(:mode<or>, :clauses[@c, |%k.pairs.sort]);
@@ -244,7 +219,7 @@ class ConditionClause does SQLSyntax {
         @!clauses = $clauses.list;
 
         if $mode eq 'none' && @!clauses > 1 {
-            die "where clause has multiple clauses, but no mode (try ':and' or ':or')";
+            die "where clause has multiple clauses, but no mode (e.g. 'and' or 'or')";
         }
     }
 
@@ -280,20 +255,17 @@ class ConditionClause does SQLSyntax {
                     die "unexpected arguments (expected only one of :and/:or): {$clause.raku}" if $pairs.elems != 1;
                     my $pair = $pairs.head;
                     my $key = $pair.key;
-                    die "unknown key (expected 'and' or 'or'): $key" unless $key eq 'and'|'or'|'or2'|'and2';
 
-                    if $key eq 'or2' {
-                        my $inner = ConditionClause.new-or2($pair.value).build-fragment;
+                    if $key eq 'or' {
+                        my $inner = ConditionClause.new-or($pair.value).build-fragment;
                         push @parts, '(' ~ $inner.sql ~ ')';
                         append @bind, $inner.bind;
-                    } elsif $key eq 'and2' {
-                        my $inner = ConditionClause.new2($pair.value).build-fragment;
+                    } elsif $key eq 'and' {
+                        my $inner = ConditionClause.new($pair.value).build-fragment;
                         push @parts, '(' ~ $inner.sql ~ ')';
                         append @bind, $inner.bind;
                     } else {
-                        my $inner = ConditionClause.new(|($key => True), $pair.value).build-fragment;
-                        push @parts, '(' ~ $inner.sql ~ ')';
-                        append @bind, $inner.bind;
+                        die "unknown key (expected 'and' or 'or'): $key";
                     }
                 }
                 when Positional {
@@ -334,21 +306,21 @@ my class Join does SQLSyntax {
         $!mode = $mode;
         $!alias = $alias;
 
-        if $on {
-            my $c = $on.Capture;
-            $!on = ConditionClause.new($c.List, |$c.Hash);
-        }
-
         if $using {
             $!using = fragment(Identifier, $using);
+        } elsif $on ~~ Capture {
+            $!on = ConditionClause.new($on);
+        } else {
+            $!on = ConditionClause.new($on.List);
         }
+
     }
 
     method build-fragment {
         my @bind;
         my $sql = $!mode ?? "$!mode JOIN " !! 'JOIN ';
 
-        with fragment(Identifier, $!table).build-fragment {
+        given fragment(Identifier, $!table).build-fragment {
             $sql ~= .sql;
             append @bind, .bind;
         }
@@ -358,14 +330,14 @@ my class Join does SQLSyntax {
         }
 
         if $!on {
-            with $!on.build-fragment {
+            given $!on.build-fragment {
                 $sql ~= ' ON ' ~ .sql;
                 append @bind, .bind;
             }
         }
 
         if $!using {
-            with $!using.build-fragment {
+            given $!using.build-fragment {
                 $sql ~= " USING ({.sql})";
                 append @bind, .bind;
             }
@@ -430,7 +402,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
     }
 
     method where2(|c) {
-        $!where = ConditionClause.new2(|c);
+        $!where = ConditionClause.new(|c);
         self;
     }
 
@@ -478,19 +450,19 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
     # Don't use multi method here to avoid inheriting Cool.join
     # TODO: add proto method to let us use multi methods without calling Cool.join
-    method join($table, :@on, :$using, Str :$as, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
+    method join($table, :$on, :$using, Str :$as, Bool :$inner, Bool :$left, Bool :$right, Bool :$full) {
         my @modes = (:$inner, :$left, :$right, :$full).grep({.value});
         if @modes > 1 {
             die "Multiple join types passed: must use only one of :inner :left :right :full (you used @modes[])";
         }
 
-        unless one(@on, $using) {
+        unless one($on, $using) {
             die "Must specify exactly one of :on or :using for join criteria";
         }
 
         my $mode = @modes[0].key.uc if @modes;
 
-        push @!join-items, Join.new(:$mode, :$table, :@on, :$using, :alias($as));
+        push @!join-items, Join.new(:$mode, :$table, :$on, :$using, :alias($as));
         self;
     }
 
@@ -882,7 +854,7 @@ my $statement = $q1.build;
 # many SQL fragments are supported:
 my $q2 = $sql.from('songs').
     select(['album', :albumlength(Fn.new('SUM', 'length'))]).
-    where(:and, [:online(True), ['year', '>=', 2020]]).
+    where([:online(True), ['year', '>=', 2020]]).
     group-by('album').
     order-by('album');
 
@@ -1068,9 +1040,10 @@ $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>));
 # SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
 =end code
 
-=head2 where($clause)
+=head2 where(@where)
 
-Provide a C<WHERE> clause with a single value:
+Provide a C<WHERE> clause with one or more values. These clauses are combined with C<AND> logic by
+default. The values are used as a C<ConditionClause>, see the documentation below for the details.
 
 =begin code :lang<raku>
 $sql.from('users').select('email').where(:username<ak>);
@@ -1080,30 +1053,15 @@ $sql.from('users').select('email').where(:username<ak>);
 $sql.from('users').select('email').where(["username", "=", "ak"]);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
-=end code
 
-The parameter is used as a single-item C<ConditionClause>. See the C<ConditionClause> documentation
-below for all the options.
+$sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "ak%"]]);
+# sql: SELECT "email" FROM "users" WHERE "email" LIKE ? AND "email" LIKE ?
+# bind: ["%gmail.com", "ak%"]
 
-=head2 where(:and/:or @where)
-
-Provide a C<WHERE> clause with many values. You must pass either C<:and> or C<:or>, which determines
-how the list of values is joined. The values are used as a C<ConditionClause>, see the documentation
-below for the details.
-
-=begin code :lang<raku>
-$sql.from('users').select('email').where(:or, [["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]);
-# sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
+# Use a Capture to make a sub-group to switch to OR logic:
+$sql.from('users').select('email').where(\(:or[["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]));
+# sql: SELECT "email" FROM "users" WHERE ("email" LIKE ? OR "email" LIKE ?)
 # bind: ["%gmail.com", "%googlemail.com"]
-=end code
-
-Note that the C<@where> clause must be a singular C<List> when passing multiple clauses. The above
-example cannot be written as:
-
-=begin code :lang<raku> :dies-ok
-
-$sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]);
-# ERROR ERROR ERROR
 =end code
 
 =head2 join($table, :@on, :$using, Str :$as, :$inner/:$left/:$right/:$full)
@@ -1139,7 +1097,7 @@ $sql.from('t2').
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t2" LEFT JOIN (SELECT "id", "foo" AS "bar" FROM "t1") AS "inner" ON "inner"."id" = "t2"."id"
 
 $sql.from('t1').
-    join('t2', :on[:and, ["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"]]).
+    join('t2', :on(["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"])).
     select(<t1.foo t2.bar>);
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" ON "t1.id" = "t2.id" AND "t1"."foo" < "t2"."foo"
 =end code
@@ -1173,11 +1131,7 @@ $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('a
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
 =end code
 
-=head2 having($clause)
-
-Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see the documentation above.
-
-=head2 having(:and/:or @having)
+=head2 having(@having)
 
 Provides a C<HAVING> clause. This is handled identical to a C<WHERE> clause, see the documentation above.
 
@@ -1378,8 +1332,11 @@ $sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c
 
 =head1 ConditionClause
 
-The C<ConditionClause> syntax is how C<SQL::Builder> encodes the options of the C<WHERE> clause and
-the C<JOIN ... ON> clause.
+The C<ConditionClause> syntax is how C<SQL::Builder> encodes the options of the
+C<WHERE> clause, the C<HAVING> clause, and the C<JOIN ... ON> clause.
+
+Multiple items are combined with C<AND> logic. To use C<OR> logic, use a
+sub-group (Capture), documented below.
 
 At its core, this syntax is a list of items. Each item can be one of three values:
 
@@ -1425,6 +1382,11 @@ with this special treatment:
 =begin code :lang<raku>
 $q.where([:a(Nil)]);
 # sql: ... WHERE "a" IS NULL
+
+# other values are not special:
+$q.where([:a(Any)]);
+# sql: ... WHERE "a" = ?
+# bind: [Any,]
 =end code
 
 =head2 Sub-group (Capture)
@@ -1434,7 +1396,7 @@ must contain a single Pair, with the key of C<and> or C<or>, depending on which 
 value is another list that creates another C<ConditionClause>.
 
 =begin code :lang<raku>
-$q.where(:and, [:a<b>, \(:or[
+$q.where([:a<b>, \(:or[
     :c<d>, :e<f>
 ])]);
 # sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
@@ -1444,39 +1406,14 @@ $q.where(:and, [:a<b>, \(:or[
 This syntax is chosen to avoid difficulties with flattening of lists in Raku. It also avoids some
 confusion between Pairs and single-item Hashes.
 
-=head2 AND, OR, and single items
-
-If you pass multiple items in a clause, you must choose whether to use C<AND> logic or C<OR> logic:
+Subgroups also provide a way to switch from C<AND> to C<OR> logic:
 
 =begin code :lang<raku>
-$q.where([["a", "=", 1], :b(2)]);
-# ERROR: don't know whether to use AND or OR
-
-$q.where(:and, [["a", "=", 1], :b(2)]);
-# sql: a = ? AND b = ?
-
-$q.where(:or, [["a", "=", 1], :b(2)]);
-# sql: a = ? OR b = ?
-
-# same applies for JOIN ... ON:
-$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]));
-# sql: ... JOIN "table" ON a = ? OR b = ?
-=end code
-
-Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
-
-If you pass a single item, you can avoid the outer list in the C<where> method, as well as avoiding a meaningless C<:and/:or>:
-
-=begin code :lang<raku>
-# these are the same:
-$q.where(["a", "=", 1]);
-$q.where([["a", "=", 1]]);
-$q.where([["a", "=", 1],]);
-
-# also the same:
-$q.where(:a(1));
-$q.where([:a(1)]);
-$q.where((:a(1)));
+$q.where(\(:or[
+    :c<d>, :e<f>
+]));
+# sql: ... WHERE (c = ? OR e = ?)
+# bind: ["d", "f"]
 =end code
 
 =head1 COMPATIBILITY
