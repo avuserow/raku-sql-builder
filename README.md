@@ -22,12 +22,12 @@ my $statement = $q1.build;
 # many SQL fragments are supported:
 my $q2 = $sql.from('songs').
     select(['album', :albumlength(Fn.new('SUM', 'length'))]).
-    where(:and, [:online(True), ['year', '>=', 2020]]).
+    where([:online(True), ['year', '>=', 2020]]).
     group-by('album').
     order-by('album');
 
 # subselects too:
-my $q3 = $sql.from(:inner($q2)).select(Fn.new('MAX', 'inner.albumlength'));
+my $q3 = $sql.from($q2, :as<inner>).select(Fn.new('MAX', 'inner.albumlength'));
 
 # joins:
 my $q4 = $sql.from('songs').
@@ -147,14 +147,14 @@ from(Str $table)
 
 Creates a `SelectBuilder` from the given table.
 
-from(Pair[Str, SelectBuilder])
-------------------------------
+from(SQLStatement, :$as!)
+-------------------------
 
-Creates a subselect from the provided SelectBuilder, aliased to the provided Str. Contrived example:
+Creates a subselect from the provided SQLStatement, aliased to the value of `$as`. Contrived example:
 
 ```raku
 my $inner-q = $sql.from('foo').select('bar');
-my $q = $sql.from(:inner($inner-q)).select('bar');
+my $q = $sql.from($inner-q, :as<inner>).select('bar');
 # SELECT "bar" FROM (SELECT "bar" FROM "foo") AS "inner"
 ```
 
@@ -168,20 +168,12 @@ select(*@columns)
 
 Specifies the list of values to return. Each column defaults to `Identifier`.
 
-A column may be aliased with the use of a Capture in the form `\("column-name", :as<alias>)`. Alternately, a `Pair` may be provided if passed positionally (not recommended, deprecated).
+A column may be aliased with the use of a Capture in the form `\("column-name", :as<alias>)`.
 
 ```raku
 # Preferred form: using a capture explicitly:
 $sql.from('table').select(\("bar", :as<foo>));
-
-# DEPRECATED: using a Pair passed positionally:
-$sql.from('table').select((:foo<bar>));
-$sql.from('table').select([:foo<bar>]);
-$sql.from('table').select(foo => "bar");
 # sql: SELECT "bar" AS "foo" FROM "table"
-
-# Passing as a named argument is not allowed due to ambiguity
-# $sql.from('table').select(:foo<bar>);
 ```
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the Pairs will always be at the end. You can avoid this by passing an Array, or parenthesizing the Pairs:
@@ -200,10 +192,10 @@ $sql.from('table').select((:a<b>), "foo", "bar", (:c<d>));
 # SELECT "b" AS "a", "foo", "bar", "d" AS "c" FROM table
 ```
 
-where($clause)
---------------
+where(@where)
+-------------
 
-Provide a `WHERE` clause with a single value:
+Provide a `WHERE` clause with one or more values. These clauses are combined with `AND` logic by default. The values are used as a `ConditionClause`, see the documentation below for the details.
 
 ```raku
 $sql.from('users').select('email').where(:username<ak>);
@@ -213,26 +205,15 @@ $sql.from('users').select('email').where(:username<ak>);
 $sql.from('users').select('email').where(["username", "=", "ak"]);
 # sql: SELECT "email" FROM "users" WHERE "username" = ?
 # bind: ["ak",]
-```
 
-The parameter is used as a single-item `ConditionClause`. See the `ConditionClause` documentation below for all the options.
+$sql.from('users').select('email').where([["email", "LIKE", "%gmail.com"], ["email", "LIKE", "ak%"]]);
+# sql: SELECT "email" FROM "users" WHERE "email" LIKE ? AND "email" LIKE ?
+# bind: ["%gmail.com", "ak%"]
 
-where(:and/:or @where)
-----------------------
-
-Provide a `WHERE` clause with many values. You must pass either `:and` or `:or`, which determines how the list of values is joined. The values are used as a `ConditionClause`, see the documentation below for the details.
-
-```raku
-$sql.from('users').select('email').where(:or, [["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]);
-# sql: SELECT "email" FROM "users" WHERE "email" LIKE ? OR "email" LIKE ?
+# Use a Capture to make a sub-group to switch to OR logic:
+$sql.from('users').select('email').where(\(:or[["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]]));
+# sql: SELECT "email" FROM "users" WHERE ("email" LIKE ? OR "email" LIKE ?)
 # bind: ["%gmail.com", "%googlemail.com"]
-```
-
-Note that the `@where` clause must be a singular `List` when passing multiple clauses. The above example cannot be written as:
-
-```raku
-$sql.from('users').select('email').where(["email", "LIKE", "%gmail.com"], ["email", "LIKE", "%googlemail.com"]);
-# ERROR ERROR ERROR
 ```
 
 join($table, :@on, :$using, Str :$as, :$inner/:$left/:$right/:$full)
@@ -263,7 +244,7 @@ $sql.from('t2').
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t2" LEFT JOIN (SELECT "id", "foo" AS "bar" FROM "t1") AS "inner" ON "inner"."id" = "t2"."id"
 
 $sql.from('t1').
-    join('t2', :on[:and, ["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"]]).
+    join('t2', :on(["t1.id", "=", Identifier.new("t2.id")], ["t1.foo", "<", "t2.foo"])).
     select(<t1.foo t2.bar>);
 # sql: SELECT "t1"."foo", "t2"."bar" FROM "t1" JOIN "t2" ON "t1.id" = "t2.id" AND "t1"."foo" < "t2"."foo"
 ```
@@ -300,13 +281,8 @@ $sql.from('songs').select(Fn.new('SUM', 'length'), 'artist', 'year').group-by('a
 # SELECT SUM("length"), "artist", "year" FROM songs GROUP BY "artist", "year"
 ```
 
-having($clause)
+having(@having)
 ---------------
-
-Provides a `HAVING` clause. This is handled identical to a `WHERE` clause, see the documentation above.
-
-having(:and/:or @having)
-------------------------
 
 Provides a `HAVING` clause. This is handled identical to a `WHERE` clause, see the documentation above.
 
@@ -503,7 +479,9 @@ $sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c
 ConditionClause
 ===============
 
-The `ConditionClause` syntax is how `SQL::Builder` encodes the options of the `WHERE` clause and the `JOIN ... ON` clause.
+The `ConditionClause` syntax is how `SQL::Builder` encodes the options of the `WHERE` clause, the `HAVING` clause, and the `JOIN ... ON` clause.
+
+Multiple items are combined with `AND` logic. To use `OR` logic, use a sub-group (Capture), documented below.
 
 At its core, this syntax is a list of items. Each item can be one of three values:
 
@@ -550,6 +528,11 @@ If the value is exactly `Nil`, then `IS NULL` is used instead. `Nil` is the only
 ```raku
 $q.where([:a(Nil)]);
 # sql: ... WHERE "a" IS NULL
+
+# other values are not special:
+$q.where([:a(Any)]);
+# sql: ... WHERE "a" = ?
+# bind: [Any,]
 ```
 
 Sub-group (Capture)
@@ -558,7 +541,7 @@ Sub-group (Capture)
 To represent a parenthesized sub-group, use a `Capture` with the `\(...)` syntax. This Capture must contain a single Pair, with the key of `and` or `or`, depending on which you want, and the value is another list that creates another `ConditionClause`.
 
 ```raku
-$q.where(:and, [:a<b>, \(:or[
+$q.where([:a<b>, \(:or[
     :c<d>, :e<f>
 ])]);
 # sql: ... WHERE "a" = ? AND (c = ? OR e = ?)
@@ -567,40 +550,14 @@ $q.where(:and, [:a<b>, \(:or[
 
 This syntax is chosen to avoid difficulties with flattening of lists in Raku. It also avoids some confusion between Pairs and single-item Hashes.
 
-AND, OR, and single items
--------------------------
-
-If you pass multiple items in a clause, you must choose whether to use `AND` logic or `OR` logic:
+Subgroups also provide a way to switch from `AND` to `OR` logic:
 
 ```raku
-$q.where([["a", "=", 1], :b(2)]);
-# ERROR: don't know whether to use AND or OR
-
-$q.where(:and, [["a", "=", 1], :b(2)]);
-# sql: a = ? AND b = ?
-
-$q.where(:or, [["a", "=", 1], :b(2)]);
-# sql: a = ? OR b = ?
-
-# same applies for JOIN ... ON:
-$q.join("table", :on(:or, ["a", "=", 1], [:b(2)]));
-# sql: ... JOIN "table" ON a = ? OR b = ?
-```
-
-Mixed AND/OR are not permitted without using a Capture to represent a subgroup.
-
-If you pass a single item, you can avoid the outer list in the `where` method, as well as avoiding a meaningless `:and/:or`:
-
-```raku
-# these are the same:
-$q.where(["a", "=", 1]);
-$q.where([["a", "=", 1]]);
-$q.where([["a", "=", 1],]);
-
-# also the same:
-$q.where(:a(1));
-$q.where([:a(1)]);
-$q.where((:a(1)));
+$q.where(\(:or[
+    :c<d>, :e<f>
+]));
+# sql: ... WHERE (c = ? OR e = ?)
+# bind: ["d", "f"]
 ```
 
 COMPATIBILITY
