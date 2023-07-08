@@ -68,10 +68,6 @@ subtest 'where clause', {
 
 subtest 'subselect', {
     my $inner = $sql.from('table').select('id');
-    given $sql.from(:$inner).select(:all).build {
-        is .sql, 'SELECT * FROM (SELECT "id" FROM "table") AS "inner"';
-    }
-
     given $sql.from($inner, :as<inner>).select(:all).build {
         is .sql, 'SELECT * FROM (SELECT "id" FROM "table") AS "inner"';
     }

@@ -57,7 +57,7 @@ subtest 'random-songs', {
         is .bind, [1, 10];
     }
 
-    my $outer-q = $sql.from(:random-songs($inner-q)).
+    my $outer-q = $sql.from($inner-q, :as<random-songs>).
         join('songs', :on('songs.song-id', '=', Identifier.new('random-songs.song-id'))).
         join(:left, 'ratings', :on(['songs.song-id', '=', Identifier.new('ratings.song-id')], ['ratings.who', '=', 'myuser'])).
         select(<songs.song-id artist album title>, Raw.fmt('{} / 2.0 AS rating', Identifier.new("rating")));

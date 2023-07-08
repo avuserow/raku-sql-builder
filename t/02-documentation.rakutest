@@ -24,7 +24,7 @@ subtest 'synopsis', {
     }
 
     # subselects too:
-    my $q3 = $sql.from(:inner($q2)).select(Fn.new('MAX', 'inner.albumlength'));
+    my $q3 = $sql.from($q2, :as<inner>).select(Fn.new('MAX', 'inner.albumlength'));
     given $q3.build {
         is .sql, 'SELECT MAX("inner"."albumlength") FROM (SELECT "album", SUM("length") AS "albumlength" FROM "songs" WHERE "online" = ? AND "year" >= ? GROUP BY "album" ORDER BY "album") AS "inner"';
         is .bind, [True, 2020];

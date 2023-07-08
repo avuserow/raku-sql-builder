@@ -358,19 +358,14 @@ class SelectBuilder does SQLSyntax does SQLStatement {
 
     proto method new(|) {*}
 
+    # Multiple FROM sources NYI
     multi method new(SQLStatement $inner, :$as!) {
         my $from = Raw.fmt('{} AS {}', $inner, fragment(Identifier, $as));
         return self.bless(:$from);
     }
 
-    # Multiple FROM sources NYI
     multi method new(*%pairs where *.elems == 1) {
-        my $pair = %pairs.head;
-        my $alias = $pair.key;
-        my $select = $pair.value.build;
-
-        my $from = Raw.new("({$select.sql}) AS {quote-column($alias)}", :bind($select.bind));
-        return self.bless(:$from);
+        die 'Unsupported use of Pair for query aliasing';
     }
 
     multi method new(Str $table) {
@@ -857,7 +852,7 @@ my $q2 = $sql.from('songs').
     order-by('album');
 
 # subselects too:
-my $q3 = $sql.from(:inner($q2)).select(Fn.new('MAX', 'inner.albumlength'));
+my $q3 = $sql.from($q2, :as<inner>).select(Fn.new('MAX', 'inner.albumlength'));
 
 # joins:
 my $q4 = $sql.from('songs').
@@ -985,13 +980,13 @@ Select queries support the following options:
 
 Creates a C<SelectBuilder> from the given table.
 
-=head2 from(Pair[Str, SelectBuilder])
+=head2 from(SQLStatement, :$as!)
 
-Creates a subselect from the provided SelectBuilder, aliased to the provided Str. Contrived example:
+Creates a subselect from the provided SQLStatement, aliased to the value of C<$as>. Contrived example:
 
 =begin code :lang<raku>
 my $inner-q = $sql.from('foo').select('bar');
-my $q = $sql.from(:inner($inner-q)).select('bar');
+my $q = $sql.from($inner-q, :as<inner>).select('bar');
 # SELECT "bar" FROM (SELECT "bar" FROM "foo") AS "inner"
 =end code
 
