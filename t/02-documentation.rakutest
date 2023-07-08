@@ -14,7 +14,7 @@ subtest 'synopsis', {
 
     # many SQL fragments are supported:
     my $q2 = $sql.from('songs').
-        select(['album', :albumlength(Fn.new('SUM', 'length'))]).
+        select(['album', \(Fn.new('SUM', 'length'), :as<albumlength>)]).
         where([:online(True), ['year', '>=', 2020]]).
         group-by('album').
         order-by('album');

@@ -159,14 +159,12 @@ class Fn does SQLSyntax is export {
     }
 }
 
-# aliased-column-list handles the Pair syntax used in the SELECT and RETURNING clauses to allow
+# aliased-column-list handles the Capture syntax used in the SELECT and RETURNING clauses to allow
 # creation of column aliases.
 sub aliased-column-list(@columns) {
-    # Treat Pairs as alias clauses here only (e.g. SELECT column AS othername)
-    # Preferred form for aliasing is using a Capture: \($column-name, :as<alias>)
     return @columns.map({
         when Pair {
-            Raw.fmt('{} AS {}', fragment(Identifier, .value), fragment(Identifier, .key));
+            die 'Unexpected Pair as argument in column list';
         }
         when Capture {
             die 'unknown argument in column list, expected: \\($column-name, :as<alias>)' unless $_ ~~ :($, :$as!);
@@ -1006,20 +1004,11 @@ Emits a C<SELECT *>.
 Specifies the list of values to return. Each column defaults to C<Identifier>.
 
 A column may be aliased with the use of a Capture in the form C<\("column-name", :as<alias>)>.
-Alternately, a C<Pair> may be provided if passed positionally (not recommended, deprecated).
 
 =begin code :lang<raku>
 # Preferred form: using a capture explicitly:
 $sql.from('table').select(\("bar", :as<foo>));
-
-# DEPRECATED: using a Pair passed positionally:
-$sql.from('table').select((:foo<bar>));
-$sql.from('table').select([:foo<bar>]);
-$sql.from('table').select(foo => "bar");
 # sql: SELECT "bar" AS "foo" FROM "table"
-
-# Passing as a named argument is not allowed due to ambiguity
-# $sql.from('table').select(:foo<bar>);
 =end code
 
 Note that due to Raku's handling of Pairs, if you mix Positional and non-Positional arguments, the

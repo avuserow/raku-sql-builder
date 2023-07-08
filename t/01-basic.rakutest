@@ -105,7 +105,7 @@ subtest 'join', {
 };
 
 subtest 'column alias', {
-    given $sql.from('t1').select((:b<a>)).build {
+    given $sql.from('t1').select(\('a', :as<b>)).build {
         is .sql, 'SELECT "a" AS "b" FROM "t1"';
         is .bind, [];
     }

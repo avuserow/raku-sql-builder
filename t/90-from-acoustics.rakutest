@@ -28,8 +28,8 @@ subtest 'history-dates', {
     my $date-trunc = Fn.new('date_trunc', Value.new('day'), Fn.new('timezone', Value.new($tz), 'song-start'));
     my $q = $sql.from('history').
         select([
-            :day($date-trunc),
-            :count(Fn.new('COUNT', $date-trunc)),
+            \($date-trunc, :as<day>),
+            \(Fn.new('COUNT', $date-trunc), :as<count>),
         ]).
         group-by('day').
         order-by(Raw.new('"day" DESC'));
@@ -97,7 +97,7 @@ subtest 'load-songs', {
 
 subtest 'get-playlists', {
     my $inner-playlist-contents = $sql.from('playlists').
-        select(['playlist-id', :contents(Fn.new('jsonb_array_elements_text', 'contents'))]).
+        select(['playlist-id', \(Fn.new('jsonb_array_elements_text', 'contents'), :as<contents>)]).
         group-by('playlist-id');
 
     my $inner-playlist-sql = q{
@@ -129,7 +129,11 @@ subtest 'get-playlists', {
 
     my $playlists-with-art = $sql.from('playlists').
         join(:left, $songs-of-playlists, :using('playlist-id'), :as('data')).
-        select([:length(Fn.new('SUM', 'data.length')), :count(Fn.new('COUNT', 'data')), |<playlists.playlist-id title who>, :art-id(Raw.fmt('mode() WITHIN GROUP(ORDER BY {})', Identifier.new('data.art-id')))]).
+        select([
+            \(Fn.new('SUM', 'data.length'), :as<length>),
+            \(Fn.new('COUNT', 'data'), :as<count>),
+            |<playlists.playlist-id title who>,
+            \(Raw.fmt('mode() WITHIN GROUP(ORDER BY {})', Identifier.new('data.art-id')), :as<art-id>)]).
         group-by('playlists.playlist-id').
         order-by('playlists.title');
 
