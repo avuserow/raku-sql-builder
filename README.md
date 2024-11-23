@@ -312,10 +312,12 @@ $sql.from('songs').select('title').order-by(\("length", :desc)).limit(10);
 # bind: 10
 ```
 
-build()
--------
+build(:$pretty=False)
+---------------------
 
 Converts this `SelectBuilder` into an `SQLFragment` that has `.sql` and `.bind` methods. This method may be called more than once, but it is not recommended. The SQL and bind values may not appear in the same order across invocations.
+
+If `$pretty` is true, then the resulting SQL will be (minimally) pretty-printed.
 
 clone()
 -------
@@ -392,10 +394,15 @@ $sql.insert-into("table").values(:a(1), :b(2), :c(3)).returning("b", Fn.new("LOW
 # INSERT INTO "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 ```
 
-head
-====
+build(:$pretty=False)
+---------------------
+
+Converts this `InsertBuilder` into an `SQLFragment` that has `.sql` and `.bind` methods. This method may be called more than once, but it is not recommended. The SQL and bind values may not appear in the same order across invocations.
+
+If `$pretty` is true, then the resulting SQL will be (minimally) pretty-printed.
 
 UPDATE QUERIES
+==============
 
 Update queries are created with the `update` method on the `SQL::Builder` object. All other options can be passed in any order. All options overwrite the current value. Each option returns the UpdateBuilder instance, allowing for a chain style:
 
@@ -444,6 +451,13 @@ returning(@columns)
 
 Provides a `RETURNING` clause, with list of columns (or other expressions) to return. This works identically to the `select` clause of a Select query, see that documentation above.
 
+build(:$pretty=False)
+---------------------
+
+Converts this `UpdateBuilder` into an `SQLFragment` that has `.sql` and `.bind` methods. This method may be called more than once, but it is not recommended. The SQL and bind values may not appear in the same order across invocations.
+
+If `$pretty` is true, then the resulting SQL will be (minimally) pretty-printed.
+
 DELETE QUERIES
 ==============
 
@@ -475,6 +489,13 @@ Provides a `RETURNING` clause, with list of columns (or other expressions) to re
 $sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c"))
 # DELETE FROM "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 ```
+
+build(:$pretty=False)
+---------------------
+
+Converts this `DeleteBuilder` into an `SQLFragment` that has `.sql` and `.bind` methods. This method may be called more than once, but it is not recommended. The SQL and bind values may not appear in the same order across invocations.
+
+If `$pretty` is true, then the resulting SQL will be (minimally) pretty-printed.
 
 ConditionClause
 ===============
@@ -573,7 +594,7 @@ Adrian Kreher <avuserow@gmail.com>
 COPYRIGHT AND LICENSE
 =====================
 
-Copyright 2022 - 2023 Adrian Kreher
+Copyright 2022 - 2024 Adrian Kreher
 
 This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
 

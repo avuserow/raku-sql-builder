@@ -1,4 +1,4 @@
-unit class SQL::Builder:ver<0.1.3>;
+unit class SQL::Builder:ver<0.2.0>;
 
 my multi sub quote-value(Str $s) {
     my $q = $s.subst("'", "''");

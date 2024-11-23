@@ -2,6 +2,11 @@ Revision history for SQL-Builder
 
 {{$NEXT}}
 
+0.2.0  2024-11-23T13:20:33-06:00
+    - Add pretty-printing option for generated SQL
+    - Fix clone method with Select statements with join clauses
+    - Fix quoting of numeric values
+
 0.1.0  2023-07-08T16:11:42-05:00
     - Remove deprecated Pair syntax for column aliases in `select/returning` clauses
     - Remove deprecated Pair syntax for table aliases in `from` clause
