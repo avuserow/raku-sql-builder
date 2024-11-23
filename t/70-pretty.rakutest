@@ -1,0 +1,159 @@
+use Test;
+use SQL::Builder;
+
+my $sql = SQL::Builder.new;
+
+subtest 'SELECT statement with all options', {
+    my $q = $sql.from('table').
+        select(<foo bar>).
+        join('table2', :using<id>).
+        join(:left, 'table3', :on(["id", "=", "id"])).
+        where(:foo<bar>).
+        group-by(<foo bar>).
+        order-by('foo').
+        having(:foo<bar>).
+        limit(100).
+        offset(10);
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim;
+        SELECT "foo", "bar"
+        FROM "table"
+        JOIN "table2" USING ("id")
+        LEFT JOIN "table3" ON "id" = ?
+        WHERE "foo" = ?
+        GROUP BY "foo", "bar"
+        HAVING "foo" = ?
+        ORDER BY "foo"
+        LIMIT ?
+        OFFSET ?
+        END
+        is .bind, ['id', 'bar', 'bar', 100, 10];
+    }
+};
+
+subtest 'SELECT statement joined to SELECT statement', {
+    my $q = $sql.from('table').
+        select(<foo bar>).
+        join('table2', :using<id>).
+        join(:left, 'table3', :on(["id", "=", "id"])).
+        where(:foo<bar>).
+        group-by(<foo bar>).
+        order-by('foo').
+        having(:foo<bar>).
+        limit(100).
+        offset(10);
+
+    my $q2 = $q.clone;
+    $q2.join($q, :using<id>);
+
+    given $q2.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        SELECT "foo", "bar"
+        FROM "table"
+        JOIN "table2" USING ("id")
+        LEFT JOIN "table3" ON "id" = ?
+        JOIN (
+            SELECT "foo", "bar"
+            FROM "table"
+            JOIN "table2" USING ("id")
+            LEFT JOIN "table3" ON "id" = ?
+            WHERE "foo" = ?
+            GROUP BY "foo", "bar"
+            HAVING "foo" = ?
+            ORDER BY "foo"
+            LIMIT ?
+            OFFSET ?
+        ) USING ("id")
+        WHERE "foo" = ?
+        GROUP BY "foo", "bar"
+        HAVING "foo" = ?
+        ORDER BY "foo"
+        LIMIT ?
+        OFFSET ?
+        END
+        is .bind, ['id', 'id', 'bar', 'bar', 100, 10, 'bar', 'bar', 100, 10];
+    }
+};
+
+subtest 'SELECT statement with subselect in WHERE clause', {
+    my $inner-q = $sql.from('table').select('foo');
+    my $q = $sql.from('table').select('bar').where(['foo', 'IN', $inner-q]);
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        SELECT "bar"
+        FROM "table"
+        WHERE "foo" IN (
+            SELECT "foo"
+            FROM "table"
+        )
+        END
+        is .bind, [];
+    }
+};
+
+subtest 'UPDATE statement with subselect', {
+    my $inner-q = $sql.from('table').select('foo');
+    my $q = $sql.
+        update('table').
+        set({bar => 'baz'}).
+        where(['foo', 'IN', $inner-q]).
+        returning('bar');
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        UPDATE "table"
+        SET "bar" = ?
+        WHERE "foo" IN (
+            SELECT "foo"
+            FROM "table"
+        )
+        RETURNING "bar"
+        END
+        is .bind, ["baz"];
+    }
+};
+
+subtest 'INSERT statement', {
+    my $q = $sql.insert-into('table').data([:foo<a>, :bar<b>]).returning("foo");
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        INSERT INTO "table" ("foo", "bar")
+        VALUES (?, ?)
+        RETURNING "foo"
+        END
+        is .bind, ["a", "b"];
+    }
+};
+
+subtest 'INSERT from SELECT statement', {
+    my $inner-q = $sql.from('table').select('foo');
+    my $q = $sql.insert-into('table2').columns('foo').query($inner-q).returning("foo");
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        INSERT INTO "table2" ("foo")
+            SELECT "foo"
+            FROM "table"
+        RETURNING "foo"
+        END
+        is .bind, [];
+    }
+};
+
+subtest 'DELETE statement', {
+    my $q = $sql.delete-from('table').where(:foo<bar>).returning("foo");
+
+    given $q.build(:pretty) {
+        is .sql, q:to<END>.trim.subst(:g, '    ', "\t");
+        DELETE FROM "table"
+        WHERE "foo" = ?
+        RETURNING "foo"
+        END
+        is .bind, ["bar",];
+    }
+};
+
+done-testing;

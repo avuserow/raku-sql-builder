@@ -1,8 +1,12 @@
-unit class SQL::Builder;
+unit class SQL::Builder:ver<0.1.3>;
 
-my sub quote-value(Str $s) {
+my multi sub quote-value(Str $s) {
     my $q = $s.subst("'", "''");
     return qq!'$s'!;
+}
+
+my multi sub quote-value(Numeric $s) {
+    return $s.Str;
 }
 
 my sub quote-column(Str $s) {
@@ -102,6 +106,9 @@ my sub append-fragments(Str $sql is rw, @bind, SQLSyntax:U $default-class, @item
 
 # SQLSyntax representing a raw value, unescaped in any way
 class Raw does SQLSyntax is export {
+    has $.fmt;
+    has @.parts;
+
     has $.value;
     has @.bind;
 
@@ -110,7 +117,19 @@ class Raw does SQLSyntax is export {
     }
 
     method build-fragment {
-        SQLFragment.new(:sql($!value), :@!bind);
+        if $!fmt {
+            my @bind;
+            my $i = 0;
+            my $value = $!fmt.subst(:g, '{}', sub {
+                my $sql = @!parts[$i++].build-fragment;
+                append @bind, $sql.bind;
+                $sql.sql;
+            });
+
+            SQLFragment.new(:sql($value), :@bind);
+        } else {
+            SQLFragment.new(:sql($!value), :@!bind);
+        }
     }
 
     method fmt($fmt, *@parts) {
@@ -127,15 +146,7 @@ class Raw does SQLSyntax is export {
             die "Raw.fmt: found unsupported replacement element '{$/.Str}' (this syntax is reserved)";
         }
 
-        my @bind;
-        my $i = 0;
-        my $value = $fmt.subst(:g, '{}', sub {
-            my $sql = @parts[$i++].build-fragment;
-            append @bind, $sql.bind;
-            $sql.sql;
-        });
-
-        self.bless(:$value, :@bind);
+        self.bless(:$fmt, :@parts);
     }
 }
 
@@ -379,7 +390,7 @@ class SelectBuilder does SQLSyntax does SQLStatement {
     method clone {
         nextwith :select-columns(@!select-columns.clone),
             :from($!from.clone),
-            :join(@!join-items.clone),
+            :join-items(@!join-items.clone),
             :where($!where.clone),
             :order-by-columns(@!order-by-columns.clone),
             :group-by-columns(@!group-by-columns.clone),
@@ -459,13 +470,21 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         self;
     }
 
-    method build-fragment {
+    method build-fragment() {
+        my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! '';
+        my $indent2 = $*pretty ?? $indent ~ "\t" !! '';
+
+        $*depth++ if $*pretty;
         my $fragment = self.build;
-        SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
+        SQLFragment.new(:sql('(' ~ $indent2 ~ $fragment.sql ~ $indent ~ ')'), :bind($fragment.bind));
     }
 
-    method build {
+    method build(Bool :$pretty) {
         die "no columns to select" unless @!select-columns;
+
+        our $*pretty = CALLERS::<$*pretty> // $pretty;
+        our $*depth = CALLERS::<$*depth> // 0;
+        my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! ' ';
 
         my @bind;
         my $sql = 'SELECT ';
@@ -473,42 +492,49 @@ class SelectBuilder does SQLSyntax does SQLStatement {
         append-fragments($sql, @bind, Identifier, aliased-column-list(@!select-columns), :join(', '));
 
         given $!from.build-fragment {
-            $sql ~= ' FROM ' ~ .sql;
+            $sql ~= $indent ~ 'FROM ' ~ .sql;
             append @bind, .bind;
         }
 
         if @!join-items {
-            $sql ~= ' ';
-            append-fragments($sql, @bind, Identifier, @!join-items, :join(' '));
+            $sql ~= $indent;
+            append-fragments($sql, @bind, Identifier, @!join-items, :join($indent));
         }
 
         if $!where {
             given $!where.build-fragment {
-                $sql ~= ' WHERE ' ~ .sql;
+                $sql ~= $indent ~ 'WHERE ' ~ .sql;
                 append @bind, .bind;
             }
         }
 
         if @!group-by-columns {
-            $sql ~= ' GROUP BY ';
+            $sql ~= $indent ~ 'GROUP BY ';
             append-fragments($sql, @bind, Identifier, @!group-by-columns, :join(', '));
         }
 
         if $!having {
             given $!having.build-fragment {
-                $sql ~= ' HAVING ' ~ .sql;
+                $sql ~= $indent ~ 'HAVING ' ~ .sql;
                 append @bind, .bind;
             }
         }
 
         if @!order-by-columns {
-            $sql ~= ' ORDER BY ';
+            $sql ~= $indent ~ 'ORDER BY ';
             append-fragments($sql, @bind, Identifier, order-by-column-list(@!order-by-columns), :join(', '));
         }
 
         if $!limit-count {
             given $!limit-count.build-fragment {
-                $sql ~= ' LIMIT ' ~ .sql;
+                $sql ~= $indent ~ 'LIMIT ' ~ .sql;
+                append @bind, .bind;
+            }
+        }
+
+        if $!offset-count {
+            given $!offset-count.build-fragment {
+                $sql ~= $indent ~ 'OFFSET ' ~ .sql;
                 append @bind, .bind;
             }
         }
@@ -605,8 +631,12 @@ class UpdateBuilder does SQLSyntax {
         SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
     }
 
-    method build {
+    method build(Bool :$pretty) {
         die "refusing to UPDATE without a WHERE clause" unless $!where;
+
+        our $*pretty = CALLERS::<$*pretty> // $pretty;
+        our $*depth = CALLERS::<$*depth> // 0;
+        my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! ' ';
 
         my @bind;
         my $sql = 'UPDATE ';
@@ -616,7 +646,7 @@ class UpdateBuilder does SQLSyntax {
             append @bind, .bind;
         }
 
-        $sql ~= ' SET ';
+        $sql ~= $indent ~ 'SET ';
 
         for @!values.kv -> $i, $pair {
             my $col = fragment(Identifier, $pair.key).build-fragment;
@@ -629,12 +659,12 @@ class UpdateBuilder does SQLSyntax {
         }
 
         given $!where.?build-fragment {
-            $sql ~= ' WHERE ' ~ .sql;
+            $sql ~= $indent ~ 'WHERE ' ~ .sql;
             append @bind, .bind;
         }
 
         if @!returning {
-            $sql ~= ' RETURNING ';
+            $sql ~= $indent ~ 'RETURNING ';
             append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
         }
 
@@ -708,7 +738,11 @@ class InsertBuilder does SQLSyntax does SQLStatement {
         SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
     }
 
-    method build {
+    method build(Bool :$pretty) {
+        our $*pretty = CALLERS::<$*pretty> // $pretty;
+        our $*depth = CALLERS::<$*depth> // 0;
+        my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! ' ';
+
         my @bind;
         my $sql = 'INSERT INTO ';
 
@@ -717,11 +751,12 @@ class InsertBuilder does SQLSyntax does SQLStatement {
             append @bind, .bind;
         }
 
-        if @!values {
+        if @!columns && @!values {
             $sql ~= ' (';
             append-fragments($sql, @bind, Identifier, @!columns, :join(', '));
-            $sql ~= ') VALUES ';
+            $sql ~= ')' ~ $indent ~  'VALUES ';
 
+            # Values can be a list-of-lists so we can insert multiple rows in a single statement
             for @!values.kv -> $i, $v {
                 $sql ~= ', ' if $i != 0;
                 $sql ~= '(';
@@ -729,20 +764,24 @@ class InsertBuilder does SQLSyntax does SQLStatement {
                 $sql ~= ')';
             }
         } elsif @!columns && $!query {
+            # since we're not using `build-fragment` here, manually increase the indent level
+            $*depth++;
+            my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! ' ';
+
             $sql ~= ' (';
             append-fragments($sql, @bind, Identifier, @!columns, :join(', '));
-            $sql ~= ') ';
-
+            $sql ~= ')' ~ $indent;
             given $!query.build {
                 $sql ~= .sql;
                 append @bind, .bind;
             }
+            $*depth--;
         } else {
             die "cannot INSERT without values (or a query)";
         }
 
         if @!returning {
-            $sql ~= ' RETURNING ';
+            $sql ~= $indent ~ 'RETURNING ';
             append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
         }
 
@@ -783,8 +822,12 @@ class DeleteBuilder does SQLSyntax does SQLStatement {
         SQLFragment.new(:sql('(' ~ $fragment.sql ~ ')'), :bind($fragment.bind));
     }
 
-    method build {
+    method build(Bool :$pretty) {
         die "refusing to DELETE without a WHERE clause" unless $!where;
+
+        our $*pretty = CALLERS::<$*pretty> // $pretty;
+        our $*depth = CALLERS::<$*depth> // 0;
+        my $indent = $*pretty ?? "\n" ~ "\t" x $*depth !! ' ';
 
         my @bind;
         my $sql = 'DELETE FROM ';
@@ -795,12 +838,12 @@ class DeleteBuilder does SQLSyntax does SQLStatement {
         }
 
         given $!where.build-fragment {
-            $sql ~= ' WHERE ' ~ .sql;
+            $sql ~= $indent ~ 'WHERE ' ~ .sql;
             append @bind, .bind;
         }
 
         if @!returning {
-            $sql ~= ' RETURNING ';
+            $sql ~= $indent ~ 'RETURNING ';
             append-fragments($sql, @bind, Identifier, aliased-column-list(@!returning), :join(', '));
         }
 
@@ -1144,11 +1187,13 @@ $sql.from('songs').select('title').order-by(\("length", :desc)).limit(10);
 # bind: 10
 =end code
 
-=head2 build()
+=head2 build(:$pretty=False)
 
 Converts this C<SelectBuilder> into an C<SQLFragment> that has C<.sql> and C<.bind> methods. This
 method may be called more than once, but it is not recommended. The SQL and bind values may not
 appear in the same order across invocations.
+
+If C<$pretty> is true, then the resulting SQL will be (minimally) pretty-printed.
 
 =head2 clone()
 
@@ -1229,7 +1274,16 @@ $sql.insert-into("table").values(:a(1), :b(2), :c(3)).returning("b", Fn.new("LOW
 # INSERT INTO "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 =end code
 
-=head UPDATE QUERIES
+=head2 build(:$pretty=False)
+
+Converts this C<InsertBuilder> into an C<SQLFragment> that has C<.sql> and C<.bind> methods. This
+method may be called more than once, but it is not recommended. The SQL and bind values may not
+appear in the same order across invocations.
+
+If C<$pretty> is true, then the resulting SQL will be (minimally) pretty-printed.
+
+
+=head1 UPDATE QUERIES
 
 Update queries are created with the C<update> method on the C<SQL::Builder> object. All other
 options can be passed in any order. All options overwrite the current value. Each option returns the
@@ -1281,6 +1335,14 @@ Unlike Select queries, this is required, even if you want to update all rows in 
 Provides a C<RETURNING> clause, with list of columns (or other expressions) to return. This works
 identically to the C<select> clause of a Select query, see that documentation above.
 
+=head2 build(:$pretty=False)
+
+Converts this C<UpdateBuilder> into an C<SQLFragment> that has C<.sql> and C<.bind> methods. This
+method may be called more than once, but it is not recommended. The SQL and bind values may not
+appear in the same order across invocations.
+
+If C<$pretty> is true, then the resulting SQL will be (minimally) pretty-printed.
+
 =head1 DELETE QUERIES
 
 Delete queries are created with the C<delete-from> method on the C<SQL::Builder> object. All other
@@ -1313,6 +1375,14 @@ identically to the C<select> clause of a Select query, see that documentation ab
 $sql.delete-from("table").where(["a", "=", 1]).returning("b", Fn.new("LOWER", "c"))
 # DELETE FROM "table" WHERE "a" = ? RETURNING "b", LOWER("c")
 =end code
+
+=head2 build(:$pretty=False)
+
+Converts this C<DeleteBuilder> into an C<SQLFragment> that has C<.sql> and C<.bind> methods. This
+method may be called more than once, but it is not recommended. The SQL and bind values may not
+appear in the same order across invocations.
+
+If C<$pretty> is true, then the resulting SQL will be (minimally) pretty-printed.
 
 =head1 ConditionClause
 
@@ -1411,7 +1481,7 @@ Adrian Kreher <avuserow@gmail.com>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2022 - 2023 Adrian Kreher
+Copyright 2022 - 2024 Adrian Kreher
 
 This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
 

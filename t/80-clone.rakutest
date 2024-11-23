@@ -17,4 +17,19 @@ subtest 'clone', {
 
 };
 
+subtest 'clone with join', {
+    my $q = $sql.from('table').select('foo').join('table2', :using<id>);
+    my $q2 = $q.clone;
+    $q2.join($q, :using<id>);
+
+    given $q2.build {
+        is .sql, '
+            SELECT "foo" FROM "table"
+            JOIN "table2" USING ("id")
+            JOIN (SELECT "foo" FROM "table" JOIN "table2" USING ("id"))
+            USING ("id")
+        '.subst(:g, /\s+/, ' ').trim;
+    }
+};
+
 done-testing;
